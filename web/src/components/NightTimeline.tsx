@@ -8,7 +8,8 @@ function cloudColor(cover: number | null): string {
 }
 
 function formatHour(iso: string): string {
-  return iso.slice(11, 16);
+  // The server sends UTC timestamps; render them in the viewer's own local time.
+  return new Date(iso).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function NightTimeline({
@@ -38,7 +39,7 @@ export default function NightTimeline({
                   key={point.time}
                   className="timeline-cell"
                   style={{ background: cloudColor(cover) }}
-                  title={`${formatHour(point.time)} UTC - oblacnost ${cover ?? '?'}%`}
+                  title={`${formatHour(point.time)} - oblacnost ${cover ?? '?'}%`}
                 />
               );
             })}

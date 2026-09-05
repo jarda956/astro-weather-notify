@@ -5,12 +5,12 @@ import NightTimeline from './NightTimeline';
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
+  // No explicit timeZone: renders in the viewer's own local time, not UTC.
   return d.toLocaleString('cs-CZ', {
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'UTC',
-  }) + ' UTC';
+  });
 }
 
 export default function LocationCard({ location }: { location: Location }) {

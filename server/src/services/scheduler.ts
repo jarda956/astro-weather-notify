@@ -111,7 +111,7 @@ async function checkLocation(loc: LocationRow): Promise<void> {
     .join('\n');
   const message = currentGood
     ? `Jasna obloha na noc: ${loc.name}\n` +
-      `Zapad slunce: ${formatTime(forecast.sunset)}, vychod: ${formatTime(forecast.sunrise)}\n` +
+      `Zapad slunce: ${formatTime(forecast.sunset)}, vychod: ${formatTime(forecast.sunrise)} (mistni cas)\n` +
       summaryLines
     : `Predpoved na noc se zhorsila: ${loc.name}\n` +
       `Uz nejspis nebude jasno.\n` +
@@ -124,6 +124,12 @@ async function checkLocation(loc: LocationRow): Promise<void> {
   }
 }
 
+// Telegram messages go to a Czech/Slovak astrophotography group, so render times in
+// Europe/Prague regardless of what timezone the server itself happens to run in.
 function formatTime(iso: string): string {
-  return `${new Date(iso).toISOString().slice(11, 16)} UTC`;
+  return new Date(iso).toLocaleTimeString('cs-CZ', {
+    timeZone: 'Europe/Prague',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

@@ -16,6 +16,8 @@ function parseCoords(text: string): { lat: number; lon: number } | null {
 function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) {
   const [name, setName] = useState('');
   const [coordsText, setCoordsText] = useState('');
+  const [cloudCoverThreshold, setCloudCoverThreshold] = useState(30);
+  const [precipitationProbabilityThreshold, setPrecipitationProbabilityThreshold] = useState(20);
   const [showMap, setShowMap] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,10 +37,14 @@ function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) 
         name,
         latitude: coords.lat,
         longitude: coords.lon,
+        cloudCoverThreshold,
+        precipitationProbabilityThreshold,
       });
       onCreated(location);
       setName('');
       setCoordsText('');
+      setCloudCoverThreshold(30);
+      setPrecipitationProbabilityThreshold(20);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ulozeni se nezdarilo');
     } finally {
@@ -63,6 +69,26 @@ function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) 
       <button type="button" onClick={() => setShowMap(true)}>
         Vybrat na mape
       </button>
+      <label className="threshold-label">
+        Max. oblacnost %
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={cloudCoverThreshold}
+          onChange={(e) => setCloudCoverThreshold(Number(e.target.value))}
+        />
+      </label>
+      <label className="threshold-label">
+        Max. srazky %
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={precipitationProbabilityThreshold}
+          onChange={(e) => setPrecipitationProbabilityThreshold(Number(e.target.value))}
+        />
+      </label>
       <button type="submit" disabled={busy}>
         Ulozit
       </button>
@@ -133,6 +159,10 @@ function LocationItem({
   const [coordsText, setCoordsText] = useState(
     `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
   );
+  const [cloudCoverThreshold, setCloudCoverThreshold] = useState(location.cloudCoverThreshold);
+  const [precipitationProbabilityThreshold, setPrecipitationProbabilityThreshold] = useState(
+    location.precipitationProbabilityThreshold
+  );
   const [showMap, setShowMap] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,6 +177,8 @@ function LocationItem({
         name,
         latitude: coords.lat,
         longitude: coords.lon,
+        cloudCoverThreshold,
+        precipitationProbabilityThreshold,
       });
       onUpdated({ ...updated, subscriberIds: location.subscriberIds });
       setEditing(false);
@@ -171,6 +203,26 @@ function LocationItem({
           <button type="button" onClick={() => setShowMap(true)}>
             Vybrat na mape
           </button>
+          <label className="threshold-label">
+            Max. oblacnost %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={cloudCoverThreshold}
+              onChange={(e) => setCloudCoverThreshold(Number(e.target.value))}
+            />
+          </label>
+          <label className="threshold-label">
+            Max. srazky %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={precipitationProbabilityThreshold}
+              onChange={(e) => setPrecipitationProbabilityThreshold(Number(e.target.value))}
+            />
+          </label>
           <button type="button" onClick={handleSave}>
             Ulozit
           </button>
@@ -196,7 +248,9 @@ function LocationItem({
             <strong>{location.name}</strong>
             <span className="muted small">
               {' '}
-              ({location.latitude.toFixed(4)}, {location.longitude.toFixed(4)})
+              ({location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}) - max. oblacnost{' '}
+              {location.cloudCoverThreshold} %, max. srazky{' '}
+              {location.precipitationProbabilityThreshold} %
             </span>
           </div>
           <div className="location-item-actions">

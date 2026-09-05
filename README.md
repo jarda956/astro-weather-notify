@@ -17,11 +17,15 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
 
   > Model **ALADIN** (dřív používaný ČHMÚ) bohužel nemá žádné veřejné/free
   > API. HARMONIE-AROME je nejbližší dostupná náhrada srovnatelného
-  > rozlišení a pokrývá celé Česko i Slovensko — oba modely a jejich
-  > konzistenci (shodu) lze v kartě lokality porovnat.
+  > rozlišení a pokrývá celé Česko i Slovensko.
+
+  U každé lokality lze v Nastavení zvlášť zapnout/vypnout, který z modelů se
+  pro ni vůbec bere v úvahu (např. když je jeden z nich pro danou oblast
+  nespolehlivý).
 - Automatická notifikace přes Telegram, když predikovaná oblačnost a srážky
   pro nadcházející noc klesnou pod nastavený práh (výchozí: oblačnost ≤ 30 %,
-  pravděpodobnost srážek ≤ 20 %) — kontroluje se v posledních hodinách před
+  pravděpodobnost srážek ≤ 20 %) u **alespoň jednoho** ze zapnutých modelů —
+  modely se nemusí shodnout. Kontroluje se v posledních hodinách před
   západem slunce, notifikace se pro danou noc a lokalitu pošle jen jednou.
 - U každé lokality lze zvlášť nastavit, kterým členům skupiny se mají
   notifikace pro ni posílat (ne každý jezdí všude).

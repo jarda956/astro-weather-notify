@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS locations (
   longitude REAL NOT NULL,
   cloud_cover_threshold INTEGER NOT NULL DEFAULT 30,
   precipitation_probability_threshold INTEGER NOT NULL DEFAULT 20,
+  enabled_models TEXT NOT NULL DEFAULT 'icon_d2,knmi_harmonie_arome_europe',
   created_by INTEGER NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

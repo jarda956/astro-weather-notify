@@ -4,6 +4,7 @@ import { env } from '../env';
 import { getNightForecast } from './forecast';
 import { sendTelegramMessage } from './telegramBot';
 import { getNightWindow } from './sun';
+import { parseEnabledModels } from './openMeteo';
 import { LocationRow, UserRow } from '../types';
 
 export function startScheduler(): void {
@@ -60,6 +61,7 @@ async function checkLocation(loc: LocationRow): Promise<void> {
       cloudCoverThreshold: loc.cloud_cover_threshold,
       precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
     },
+    parseEnabledModels(loc.enabled_models),
     now
   );
 

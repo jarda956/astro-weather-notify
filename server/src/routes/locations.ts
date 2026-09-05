@@ -4,6 +4,7 @@ import { db } from '../db';
 import { requireAuth } from '../middleware/requireAuth';
 import { LocationRow } from '../types';
 import { getNightForecast } from '../services/forecast';
+import { DEFAULT_ENABLED_MODELS, WEATHER_MODELS, parseEnabledModels } from '../services/openMeteo';
 
 export const locationsRouter = Router();
 
@@ -24,6 +25,7 @@ function serializeLocation(loc: LocationRow) {
     longitude: loc.longitude,
     cloudCoverThreshold: loc.cloud_cover_threshold,
     precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
+    enabledModels: parseEnabledModels(loc.enabled_models),
     createdBy: loc.created_by,
     subscriberIds: subscriberIds(loc.id),
   };
@@ -40,6 +42,7 @@ const locationSchema = z.object({
   longitude: z.number().gte(-180).lte(180),
   cloudCoverThreshold: z.number().int().min(0).max(100).optional(),
   precipitationProbabilityThreshold: z.number().int().min(0).max(100).optional(),
+  enabledModels: z.array(z.enum(WEATHER_MODELS)).min(1).optional(),
 });
 
 locationsRouter.post('/', (req, res) => {
@@ -48,12 +51,12 @@ locationsRouter.post('/', (req, res) => {
     res.status(400).json({ error: 'Invalid location data', details: parsed.error.issues });
     return;
   }
-  const { name, latitude, longitude, cloudCoverThreshold, precipitationProbabilityThreshold } =
+  const { name, latitude, longitude, cloudCoverThreshold, precipitationProbabilityThreshold, enabledModels } =
     parsed.data;
   const info = db
     .prepare(
-      `INSERT INTO locations (name, latitude, longitude, cloud_cover_threshold, precipitation_probability_threshold, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO locations (name, latitude, longitude, cloud_cover_threshold, precipitation_probability_threshold, enabled_models, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       name,
@@ -61,6 +64,7 @@ locationsRouter.post('/', (req, res) => {
       longitude,
       cloudCoverThreshold ?? 30,
       precipitationProbabilityThreshold ?? 20,
+      enabledModels?.join(',') ?? DEFAULT_ENABLED_MODELS,
       req.user!.id
     );
   // The creator is subscribed to notifications for their own location by default.
@@ -92,7 +96,7 @@ locationsRouter.put('/:id', (req, res) => {
   db.prepare(
     `UPDATE locations SET
        name = ?, latitude = ?, longitude = ?,
-       cloud_cover_threshold = ?, precipitation_probability_threshold = ?
+       cloud_cover_threshold = ?, precipitation_probability_threshold = ?, enabled_models = ?
      WHERE id = ?`
   ).run(
     data.name ?? existing.name,
@@ -100,6 +104,7 @@ locationsRouter.put('/:id', (req, res) => {
     data.longitude ?? existing.longitude,
     data.cloudCoverThreshold ?? existing.cloud_cover_threshold,
     data.precipitationProbabilityThreshold ?? existing.precipitation_probability_threshold,
+    data.enabledModels?.join(',') ?? existing.enabled_models,
     id
   );
   const loc = db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as LocationRow;
@@ -151,10 +156,15 @@ locationsRouter.get('/:id/forecast', async (req, res) => {
     return;
   }
   try {
-    const forecast = await getNightForecast(loc.latitude, loc.longitude, {
-      cloudCoverThreshold: loc.cloud_cover_threshold,
-      precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
-    });
+    const forecast = await getNightForecast(
+      loc.latitude,
+      loc.longitude,
+      {
+        cloudCoverThreshold: loc.cloud_cover_threshold,
+        precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
+      },
+      parseEnabledModels(loc.enabled_models)
+    );
     res.json({ forecast });
   } catch (err) {
     res.status(502).json({ error: 'Failed to fetch weather forecast', details: String(err) });

@@ -12,6 +12,21 @@ export const MODEL_LABELS: Record<WeatherModel, string> = {
   knmi_harmonie_arome_europe: 'HARMONIE-AROME (KNMI)',
 };
 
+export const DEFAULT_ENABLED_MODELS = WEATHER_MODELS.join(',');
+
+export function isWeatherModel(value: string): value is WeatherModel {
+  return (WEATHER_MODELS as readonly string[]).includes(value);
+}
+
+// Locations store their enabled models as a comma-separated list (see locations.enabled_models).
+export function parseEnabledModels(value: string): WeatherModel[] {
+  const models = value
+    .split(',')
+    .map((v) => v.trim())
+    .filter(isWeatherModel);
+  return models.length > 0 ? models : [...WEATHER_MODELS];
+}
+
 const HOURLY_FIELDS = [
   'cloud_cover',
   'cloud_cover_low',

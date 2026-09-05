@@ -4,6 +4,7 @@ import { env } from '../env';
 import { getNightForecast } from './forecast';
 import { sendTelegramMessage } from './telegramBot';
 import { getNightWindow } from './sun';
+import { parseEnabledModels } from './openMeteo';
 import { LocationRow, UserRow } from '../types';
 
 export function startScheduler(): void {
@@ -29,16 +30,29 @@ async function checkLocation(loc: LocationRow): Promise<void> {
   const now = new Date();
   const { sunset, nightDate } = getNightWindow(loc.latitude, loc.longitude, now);
   const hoursUntilSunset = (sunset.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const logPrefix = `[scheduler] ${loc.name} (night ${nightDate}):`;
 
-  // Only worth evaluating in the lookahead window before sunset (and shortly after).
-  if (hoursUntilSunset > env.notifyLookaheadHours || hoursUntilSunset < -1) {
+  // Only worth evaluating in the lookahead window before sunset (and shortly after),
+  // unless NOTIFY_IGNORE_WINDOW=true is set for manual testing.
+  if (
+    !env.notifyIgnoreWindow &&
+    (hoursUntilSunset > env.notifyLookaheadHours || hoursUntilSunset < -1)
+  ) {
+    console.log(
+      `${logPrefix} outside notification window (sunset in ${hoursUntilSunset.toFixed(
+        1
+      )}h, lookahead ${env.notifyLookaheadHours}h) - skipping`
+    );
     return;
   }
 
   const alreadySent = db
     .prepare('SELECT 1 FROM notification_log WHERE location_id = ? AND night_date = ?')
     .get(loc.id, nightDate);
-  if (alreadySent) return;
+  if (alreadySent) {
+    console.log(`${logPrefix} already notified for this night - skipping`);
+    return;
+  }
 
   const forecast = await getNightForecast(
     loc.latitude,
@@ -47,7 +61,19 @@ async function checkLocation(loc: LocationRow): Promise<void> {
       cloudCoverThreshold: loc.cloud_cover_threshold,
       precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
     },
+    parseEnabledModels(loc.enabled_models),
     now
+  );
+
+  console.log(
+    `${logPrefix} overallGood=${forecast.overallGood} - ${forecast.modelSummaries
+      .map(
+        (m) =>
+          `${m.label}: hasData=${m.hasData} avgCloud=${m.avgCloudCover?.toFixed(0) ?? 'n/a'}% maxPrecip=${
+            m.maxPrecipitationProbability ?? 'n/a'
+          }% isGood=${m.isGood}`
+      )
+      .join(' | ')}`
   );
 
   if (!forecast.overallGood) return;
@@ -59,6 +85,8 @@ async function checkLocation(loc: LocationRow): Promise<void> {
        WHERE ls.location_id = ? AND u.telegram_chat_id IS NOT NULL`
     )
     .all(loc.id) as UserRow[];
+
+  console.log(`${logPrefix} sky is good, notifying ${subscribers.length} subscriber(s) with Telegram linked`);
 
   const summaryLines = forecast.modelSummaries
     .map((m) => `- ${m.label}: oblacnost ~${m.avgCloudCover?.toFixed(0) ?? '?'} %`)

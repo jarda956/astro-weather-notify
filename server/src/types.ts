@@ -22,6 +22,7 @@ export interface LocationRow {
   longitude: number;
   cloud_cover_threshold: number;
   precipitation_probability_threshold: number;
+  enabled_models: string;
   created_by: number;
   created_at: string;
 }

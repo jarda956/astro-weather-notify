@@ -1,7 +1,36 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
-import { Location, PublicUser } from '../types';
+import { Location, MODEL_OPTIONS, PublicUser } from '../types';
 import MapPicker from '../components/MapPicker';
+
+function ModelCheckboxes({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (models: string[]) => void;
+}) {
+  function toggle(id: string, checked: boolean) {
+    const next = checked ? [...selected, id] : selected.filter((m) => m !== id);
+    if (next.length === 0) return; // always keep at least one model enabled
+    onChange(next);
+  }
+
+  return (
+    <div className="model-checkboxes">
+      {MODEL_OPTIONS.map((m) => (
+        <label key={m.id} className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={selected.includes(m.id)}
+            onChange={(e) => toggle(m.id, e.target.checked)}
+          />
+          {m.label}
+        </label>
+      ))}
+    </div>
+  );
+}
 
 function parseCoords(text: string): { lat: number; lon: number } | null {
   const parts = text.split(',').map((p) => p.trim());
@@ -16,6 +45,9 @@ function parseCoords(text: string): { lat: number; lon: number } | null {
 function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) {
   const [name, setName] = useState('');
   const [coordsText, setCoordsText] = useState('');
+  const [cloudCoverThreshold, setCloudCoverThreshold] = useState(30);
+  const [precipitationProbabilityThreshold, setPrecipitationProbabilityThreshold] = useState(20);
+  const [enabledModels, setEnabledModels] = useState<string[]>(MODEL_OPTIONS.map((m) => m.id));
   const [showMap, setShowMap] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,10 +67,16 @@ function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) 
         name,
         latitude: coords.lat,
         longitude: coords.lon,
+        cloudCoverThreshold,
+        precipitationProbabilityThreshold,
+        enabledModels,
       });
       onCreated(location);
       setName('');
       setCoordsText('');
+      setCloudCoverThreshold(30);
+      setPrecipitationProbabilityThreshold(20);
+      setEnabledModels(MODEL_OPTIONS.map((m) => m.id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ulozeni se nezdarilo');
     } finally {
@@ -63,6 +101,27 @@ function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) 
       <button type="button" onClick={() => setShowMap(true)}>
         Vybrat na mape
       </button>
+      <label className="threshold-label">
+        Max. oblacnost %
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={cloudCoverThreshold}
+          onChange={(e) => setCloudCoverThreshold(Number(e.target.value))}
+        />
+      </label>
+      <label className="threshold-label">
+        Max. srazky %
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={precipitationProbabilityThreshold}
+          onChange={(e) => setPrecipitationProbabilityThreshold(Number(e.target.value))}
+        />
+      </label>
+      <ModelCheckboxes selected={enabledModels} onChange={setEnabledModels} />
       <button type="submit" disabled={busy}>
         Ulozit
       </button>
@@ -133,6 +192,11 @@ function LocationItem({
   const [coordsText, setCoordsText] = useState(
     `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
   );
+  const [cloudCoverThreshold, setCloudCoverThreshold] = useState(location.cloudCoverThreshold);
+  const [precipitationProbabilityThreshold, setPrecipitationProbabilityThreshold] = useState(
+    location.precipitationProbabilityThreshold
+  );
+  const [enabledModels, setEnabledModels] = useState<string[]>(location.enabledModels);
   const [showMap, setShowMap] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,6 +211,9 @@ function LocationItem({
         name,
         latitude: coords.lat,
         longitude: coords.lon,
+        cloudCoverThreshold,
+        precipitationProbabilityThreshold,
+        enabledModels,
       });
       onUpdated({ ...updated, subscriberIds: location.subscriberIds });
       setEditing(false);
@@ -171,6 +238,27 @@ function LocationItem({
           <button type="button" onClick={() => setShowMap(true)}>
             Vybrat na mape
           </button>
+          <label className="threshold-label">
+            Max. oblacnost %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={cloudCoverThreshold}
+              onChange={(e) => setCloudCoverThreshold(Number(e.target.value))}
+            />
+          </label>
+          <label className="threshold-label">
+            Max. srazky %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={precipitationProbabilityThreshold}
+              onChange={(e) => setPrecipitationProbabilityThreshold(Number(e.target.value))}
+            />
+          </label>
+          <ModelCheckboxes selected={enabledModels} onChange={setEnabledModels} />
           <button type="button" onClick={handleSave}>
             Ulozit
           </button>
@@ -196,7 +284,12 @@ function LocationItem({
             <strong>{location.name}</strong>
             <span className="muted small">
               {' '}
-              ({location.latitude.toFixed(4)}, {location.longitude.toFixed(4)})
+              ({location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}) - max. oblacnost{' '}
+              {location.cloudCoverThreshold} %, max. srazky{' '}
+              {location.precipitationProbabilityThreshold} %, modely:{' '}
+              {location.enabledModels
+                .map((id) => MODEL_OPTIONS.find((m) => m.id === id)?.label ?? id)
+                .join(', ')}
             </span>
           </div>
           <div className="location-item-actions">

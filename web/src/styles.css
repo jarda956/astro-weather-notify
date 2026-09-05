@@ -246,6 +246,28 @@ a {
   min-width: 140px;
 }
 
+.threshold-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.threshold-label input {
+  flex: none;
+  width: 4.5rem;
+  min-width: 0;
+}
+
+.model-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 .location-list {
   list-style: none;
   margin: 0;

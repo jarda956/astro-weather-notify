@@ -56,6 +56,7 @@ export async function getNightForecast(
   lat: number,
   lon: number,
   thresholds: ForecastThresholds,
+  enabledModels: WeatherModel[] = [...WEATHER_MODELS],
   reference: Date = new Date()
 ): Promise<NightForecast> {
   const { sunset, sunrise, nightDate } = getNightWindow(lat, lon, reference);
@@ -69,7 +70,7 @@ export async function getNightForecast(
 
   const hourly: HourlyPoint[] = nightIdx.map((i) => {
     const models = {} as Record<WeatherModel, HourlyModelPoint>;
-    for (const model of WEATHER_MODELS) {
+    for (const model of enabledModels) {
       models[model] = {
         cloudCover: hourlyValue(hourlyRaw, 'cloud_cover', model, i),
         cloudCoverLow: hourlyValue(hourlyRaw, 'cloud_cover_low', model, i),
@@ -85,7 +86,7 @@ export async function getNightForecast(
     return { time: hourlyRaw.time[i], models };
   });
 
-  const modelSummaries: ModelSummary[] = WEATHER_MODELS.map((model) => {
+  const modelSummaries: ModelSummary[] = enabledModels.map((model) => {
     const cloudCovers = hourly
       .map((h) => h.models[model].cloudCover)
       .filter((v): v is number => v !== null);
@@ -110,8 +111,10 @@ export async function getNightForecast(
     };
   });
 
+  // A location is "good" for the night if at least one of its enabled models (that
+  // actually has data) predicts clear enough skies - the two models don't need to agree.
   const modelsWithData = modelSummaries.filter((m) => m.hasData);
-  const overallGood = modelsWithData.length > 0 && modelsWithData.every((m) => m.isGood);
+  const overallGood = modelsWithData.some((m) => m.isGood);
 
   return {
     sunset: sunset.toISOString(),

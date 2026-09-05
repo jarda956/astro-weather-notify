@@ -12,9 +12,16 @@ export interface Location {
   longitude: number;
   cloudCoverThreshold: number;
   precipitationProbabilityThreshold: number;
+  enabledModels: string[];
   createdBy: number;
   subscriberIds: number[];
 }
+
+// Keep in sync with server/src/services/openMeteo.ts's WEATHER_MODELS/MODEL_LABELS.
+export const MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: 'icon_d2', label: 'ICON D2 (DWD)' },
+  { id: 'knmi_harmonie_arome_europe', label: 'HARMONIE-AROME (KNMI)' },
+];
 
 export interface HourlyModelPoint {
   cloudCover: number | null;

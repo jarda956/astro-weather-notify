@@ -31,8 +31,12 @@ async function checkLocation(loc: LocationRow): Promise<void> {
   const hoursUntilSunset = (sunset.getTime() - now.getTime()) / (1000 * 60 * 60);
   const logPrefix = `[scheduler] ${loc.name} (night ${nightDate}):`;
 
-  // Only worth evaluating in the lookahead window before sunset (and shortly after).
-  if (hoursUntilSunset > env.notifyLookaheadHours || hoursUntilSunset < -1) {
+  // Only worth evaluating in the lookahead window before sunset (and shortly after),
+  // unless NOTIFY_IGNORE_WINDOW=true is set for manual testing.
+  if (
+    !env.notifyIgnoreWindow &&
+    (hoursUntilSunset > env.notifyLookaheadHours || hoursUntilSunset < -1)
+  ) {
     console.log(
       `${logPrefix} outside notification window (sunset in ${hoursUntilSunset.toFixed(
         1

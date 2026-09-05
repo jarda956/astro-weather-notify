@@ -20,3 +20,10 @@ if (!locationColumns.some((c) => c.name === 'enabled_models')) {
     "ALTER TABLE locations ADD COLUMN enabled_models TEXT NOT NULL DEFAULT 'icon_d2,knmi_harmonie_arome_europe'"
   );
 }
+
+const notificationLogColumns = db.prepare('PRAGMA table_info(notification_log)').all() as {
+  name: string;
+}[];
+if (!notificationLogColumns.some((c) => c.name === 'last_good')) {
+  db.exec('ALTER TABLE notification_log ADD COLUMN last_good INTEGER NOT NULL DEFAULT 0');
+}

@@ -26,7 +26,9 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
   pro nadcházející noc klesnou pod nastavený práh (výchozí: oblačnost ≤ 30 %,
   pravděpodobnost srážek ≤ 20 %) u **alespoň jednoho** ze zapnutých modelů —
   modely se nemusí shodnout. Kontroluje se v posledních hodinách před
-  západem slunce, notifikace se pro danou noc a lokalitu pošle jen jednou.
+  západem slunce; appka posílá zprávu při první "bude jasno" a pak znovu
+  jen tehdy, když se vyhodnocení pro danou noc změní (zhorší zpátky na
+  "nebude jasno", nebo se znovu zlepší) - ne opakovaně beze změny.
 - U každé lokality lze zvlášť nastavit, kterým členům skupiny se mají
   notifikace pro ni posílat (ne každý jezdí všude).
 - WhatsApp notifikace nejsou (zatím) implementované — vyžadují placený

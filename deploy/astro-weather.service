@@ -1,0 +1,17 @@
+[Unit]
+Description=Astro Weather Notify
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/astro-weather-notify/server
+EnvironmentFile=/opt/astro-weather-notify/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+User=astro-weather
+Group=astro-weather
+
+[Install]
+WantedBy=multi-user.target

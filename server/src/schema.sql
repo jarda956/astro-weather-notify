@@ -26,10 +26,14 @@ CREATE TABLE IF NOT EXISTS location_subscribers (
   PRIMARY KEY (location_id, user_id)
 );
 
+-- Tracks the last known "is the sky good for this night" verdict per location,
+-- so the scheduler can notify again when that verdict flips (good <-> bad),
+-- not just the first time it becomes good.
 CREATE TABLE IF NOT EXISTS notification_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
   night_date TEXT NOT NULL,
+  last_good INTEGER NOT NULL DEFAULT 0,
   sent_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(location_id, night_date)
 );

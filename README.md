@@ -98,6 +98,7 @@ systemctl enable --now astro-weather
 | `TELEGRAM_BOT_TOKEN` | Token bota od [@BotFather](https://t.me/BotFather); prázdné = Telegram notifikace vypnuté |
 | `NOTIFY_CRON` | Jak často se kontroluje předpověď (cron výraz, výchozí každou hodinu) |
 | `NOTIFY_LOOKAHEAD_HOURS` | Kolik hodin před západem slunce smí přijít notifikace na danou noc |
+| `NOTIFY_IGNORE_WINDOW` | Jen pro testování: `true` = kontrola proběhne kdykoliv během dne, ne jen v okně před západem slunce. V běžném provozu nech `false`. |
 
 ## Nastavení Telegram bota
 
@@ -107,6 +108,48 @@ systemctl enable --now astro-weather
 2. Každý uživatel si v aplikaci v Nastavení klikne na "Propojit Telegram",
    otevře vygenerovaný odkaz a v Telegramu stiskne Start — tím se jeho účet
    propojí a bude moct dostávat notifikace.
+
+## Ruční test notifikace
+
+Notifikace se v běžném provozu posílá jen v úzkém okně před západem slunce,
+takže na reálnou notifikaci by se čekalo i několik dní. Takhle se dá ověřit
+funkčnost kdykoliv:
+
+1. **Najdi soubor s databází.** `DATABASE_PATH` v `.env` je relativní cesta,
+   takže se skládá s pracovním adresářem procesu, ne s kořenem repozitáře:
+   - bez Dockeru (systemd): `WorkingDirectory` je `.../server`, takže soubor
+     je na `/opt/astro-weather-notify/server/data/astro-weather.sqlite`.
+   - v Dockeru: `WORKDIR` je `/app`, takže soubor je `/app/data/astro-weather.sqlite`
+     (uvnitř kontejneru; na hostu je to `./data/astro-weather.sqlite` vedle
+     `docker-compose.yml`, díky namountovanému volume).
+
+   Když si nejsi jistý, ověř si to přes `find /opt/astro-weather-notify -name "astro-weather.sqlite*"`.
+
+2. **Zapni testovací režim** v `.env`:
+   ```
+   NOTIFY_IGNORE_WINDOW=true
+   ```
+   a restartuj appku (`systemctl restart astro-weather`, případně
+   `docker compose restart`).
+
+3. **Sleduj log:**
+   ```bash
+   journalctl -u astro-weather -f
+   ```
+   U každé lokality uvidíš řádek s `overallGood=...` a rozpisem obou modelů
+   (`hasData`, `avgCloud`, `maxPrecip`, `isGood`), případně
+   `sky is good, notifying N subscriber(s)...`.
+
+4. **Pokud appka hlásí `already notified for this night - skipping`**, pro
+   danou noc a lokalitu už notifikaci jednou odeslala (nebo vyhodnotila) a
+   podruhé ji ten samý den neposílá. Pro opakovaný test smaž záznam:
+   ```bash
+   sqlite3 <cesta-k-souboru>/astro-weather.sqlite "DELETE FROM notification_log;"
+   systemctl restart astro-weather
+   ```
+
+5. **Po testu úklid** — vrať `NOTIFY_IGNORE_WINDOW=false` v `.env` a
+   restartuj, ať appka mimo běžné okno večer neposílá notifikace.
 
 ## Vývoj
 

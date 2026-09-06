@@ -11,24 +11,26 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
   spuštění, další přidává administrátor v Nastavení).
 - Uložené lokality s GPS souřadnicemi, přidání ručně nebo výběrem místa na
   mapě.
-- Předpověď ze dvou nezávislých modelů:
+- Předpověď ze tří nezávislých modelů:
   - **ICON-D2** (DWD, ~2 km rozlišení, Střední Evropa)
-  - **HARMONIE-AROME** (KNMI, ~2 km, celoevropská doména)
+  - **ALADIN 1 km ČR** (ČHMÚ, otevřená data, jen území Česka)
+  - **ALADIN 2 km Střední Evropa** (ČHMÚ, otevřená data, širší doména včetně
+    Slovenska)
 
-  > Model **ALADIN** (dřív používaný ČHMÚ) bohužel nemá žádné veřejné/free
-  > API. HARMONIE-AROME je nejbližší dostupná náhrada srovnatelného
-  > rozlišení a pokrývá celé Česko i Slovensko.
+  ALADIN se ukázalo jako přece jen dostupný přes otevřená data ČHMÚ
+  (`opendata.chmi.cz`), zprostředkovaná stejným Open-Meteo API — appka tak
+  používá skutečný ALADIN, ne náhradu.
 
   U každé lokality lze v Nastavení zvlášť zapnout/vypnout, který z modelů se
-  pro ni vůbec bere v úvahu (např. když je jeden z nich pro danou oblast
-  nespolehlivý).
+  pro ni vůbec bere v úvahu (např. 1km ALADIN nemá smysl pro slovenské
+  lokality, protože jeho doména Slovensko vůbec nepokrývá).
 
   Dashboard ukazuje předpověď na **všechny nadcházející noci, které ještě
   pokrývá alespoň jeden zapnutý model jeho reálnými vysoko-rozlišenými daty**
-  (ICON-D2 cca 48 h dopředu, HARMONIE-AROME cca 60 h) — obvykle tedy dnešní a
+  (ICON-D2 cca 48 h dopředu, ALADIN cca 72 h) — obvykle tedy dnešní a
   zítřejší noc, večer i část noci pozítří. Dál appka nekouká záměrně: Open-Meteo
   by od té doby tiše doplňovalo data z hrubšího modelu (ICON-EU / ECMWF), a to
-  by pod jménem ICON-D2/HARMONIE-AROME nebyla pravda.
+  by pod jménem ICON-D2/ALADIN nebyla pravda.
 - Automatická notifikace přes Telegram, když predikovaná oblačnost a srážky
   pro nadcházející noc klesnou pod nastavený práh (výchozí: oblačnost ≤ 30 %,
   pravděpodobnost srážek ≤ 20 %) u **alespoň jednoho** ze zapnutých modelů —

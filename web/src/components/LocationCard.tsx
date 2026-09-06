@@ -13,8 +13,49 @@ function formatDateTime(iso: string): string {
   });
 }
 
+function nightHeading(index: number, sunsetIso: string): string {
+  if (index === 0) return 'Dnes v noci';
+  if (index === 1) return 'Zitra v noci';
+  return new Date(sunsetIso).toLocaleDateString('cs-CZ', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'numeric',
+  });
+}
+
+function NightBlock({ night, index }: { night: NightForecast; index: number }) {
+  return (
+    <div className="night-block">
+      <div className="night-block-header">
+        <strong>{nightHeading(index, night.sunset)}</strong>
+        <span className={`badge ${night.overallGood ? 'badge-good' : 'badge-bad'}`}>
+          {night.overallGood ? 'Jasno na oblohu' : 'Nevhodne'}
+        </span>
+      </div>
+      <p className="small">
+        Zapad slunce {formatDateTime(night.sunset)} - Vychod slunce {formatDateTime(night.sunrise)}
+      </p>
+      <div className="model-summaries">
+        {night.modelSummaries.map((m) => (
+          <div key={m.model} className="model-summary">
+            <strong>{m.label}</strong>
+            <span>
+              {m.hasData
+                ? `prum. oblacnost ${m.avgCloudCover?.toFixed(0)} %, max srazky ${
+                    m.maxPrecipitationProbability ?? 0
+                  } %`
+                : 'zadna data'}
+            </span>
+          </div>
+        ))}
+      </div>
+      <NightTimeline hourly={night.hourly} modelSummaries={night.modelSummaries} />
+    </div>
+  );
+}
+
 export default function LocationCard({ location }: { location: Location }) {
-  const [forecast, setForecast] = useState<NightForecast | null>(null);
+  const [nights, setNights] = useState<NightForecast[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -24,8 +65,8 @@ export default function LocationCard({ location }: { location: Location }) {
     setError(null);
     api
       .getForecast(location.id)
-      .then(({ forecast }) => {
-        if (!cancelled) setForecast(forecast);
+      .then(({ nights }) => {
+        if (!cancelled) setNights(nights);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof ApiError ? err.message : 'Chyba pri nacitani');
@@ -38,13 +79,15 @@ export default function LocationCard({ location }: { location: Location }) {
     };
   }, [location.id]);
 
+  const tonight = nights?.[0];
+
   return (
     <section className="location-card">
       <header className="location-card-header">
         <h2>{location.name}</h2>
-        {forecast && (
-          <span className={`badge ${forecast.overallGood ? 'badge-good' : 'badge-bad'}`}>
-            {forecast.overallGood ? 'Jasno na oblohu' : 'Nevhodne'}
+        {tonight && (
+          <span className={`badge ${tonight.overallGood ? 'badge-good' : 'badge-bad'}`}>
+            {tonight.overallGood ? 'Jasno na oblohu' : 'Nevhodne'}
           </span>
         )}
       </header>
@@ -53,28 +96,15 @@ export default function LocationCard({ location }: { location: Location }) {
       </p>
       {loading && <p className="muted">Nacitani predpovedi...</p>}
       {error && <p className="error">{error}</p>}
-      {forecast && !loading && (
-        <>
-          <p className="small">
-            Zapad slunce {formatDateTime(forecast.sunset)} - Vychod slunce{' '}
-            {formatDateTime(forecast.sunrise)}
-          </p>
-          <div className="model-summaries">
-            {forecast.modelSummaries.map((m) => (
-              <div key={m.model} className="model-summary">
-                <strong>{m.label}</strong>
-                <span>
-                  {m.hasData
-                    ? `prum. oblacnost ${m.avgCloudCover?.toFixed(0)} %, max srazky ${
-                        m.maxPrecipitationProbability ?? 0
-                      } %`
-                    : 'zadna data'}
-                </span>
-              </div>
-            ))}
-          </div>
-          <NightTimeline hourly={forecast.hourly} modelSummaries={forecast.modelSummaries} />
-        </>
+      {nights && !loading && nights.length === 0 && (
+        <p className="muted">Zadny ze zapnutych modelu na tuto lokalitu momentalne nedosahne.</p>
+      )}
+      {nights && !loading && (
+        <div className="night-list">
+          {nights.map((night, i) => (
+            <NightBlock key={night.nightDate} night={night} index={i} />
+          ))}
+        </div>
       )}
     </section>
   );

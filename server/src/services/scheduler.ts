@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { db } from '../db';
 import { env } from '../env';
-import { getNightForecast } from './forecast';
+import { getUpcomingNights } from './forecast';
 import { sendTelegramMessage } from './telegramBot';
 import { getNightWindow } from './sun';
 import { parseEnabledModels } from './openMeteo';
@@ -51,7 +51,7 @@ async function checkLocation(loc: LocationRow): Promise<void> {
     .get(loc.id, nightDate) as { last_good: number } | undefined;
   const previousGood = previousRow ? !!previousRow.last_good : null;
 
-  const forecast = await getNightForecast(
+  const nights = await getUpcomingNights(
     loc.latitude,
     loc.longitude,
     {
@@ -61,6 +61,11 @@ async function checkLocation(loc: LocationRow): Promise<void> {
     parseEnabledModels(loc.enabled_models),
     now
   );
+  const forecast = nights[0];
+  if (!forecast) {
+    console.log(`${logPrefix} no model covers tonight yet - skipping`);
+    return;
+  }
 
   console.log(
     `${logPrefix} overallGood=${forecast.overallGood} - ${forecast.modelSummaries

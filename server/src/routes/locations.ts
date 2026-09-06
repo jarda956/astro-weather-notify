@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { requireAuth } from '../middleware/requireAuth';
 import { LocationRow } from '../types';
-import { getNightForecast } from '../services/forecast';
+import { getUpcomingNights } from '../services/forecast';
 import { DEFAULT_ENABLED_MODELS, WEATHER_MODELS, parseEnabledModels } from '../services/openMeteo';
 
 export const locationsRouter = Router();
@@ -156,7 +156,7 @@ locationsRouter.get('/:id/forecast', async (req, res) => {
     return;
   }
   try {
-    const forecast = await getNightForecast(
+    const nights = await getUpcomingNights(
       loc.latitude,
       loc.longitude,
       {
@@ -165,7 +165,7 @@ locationsRouter.get('/:id/forecast', async (req, res) => {
       },
       parseEnabledModels(loc.enabled_models)
     );
-    res.json({ forecast });
+    res.json({ nights });
   } catch (err) {
     res.status(502).json({ error: 'Failed to fetch weather forecast', details: String(err) });
   }

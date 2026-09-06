@@ -168,6 +168,30 @@ a {
   font-size: 0.85rem;
 }
 
+.night-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.night-block {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.night-block:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.night-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
 .model-summaries {
   display: flex;
   flex-direction: column;

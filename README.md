@@ -22,6 +22,13 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
   U každé lokality lze v Nastavení zvlášť zapnout/vypnout, který z modelů se
   pro ni vůbec bere v úvahu (např. když je jeden z nich pro danou oblast
   nespolehlivý).
+
+  Dashboard ukazuje předpověď na **všechny nadcházející noci, které ještě
+  pokrývá alespoň jeden zapnutý model jeho reálnými vysoko-rozlišenými daty**
+  (ICON-D2 cca 48 h dopředu, HARMONIE-AROME cca 60 h) — obvykle tedy dnešní a
+  zítřejší noc, večer i část noci pozítří. Dál appka nekouká záměrně: Open-Meteo
+  by od té doby tiše doplňovalo data z hrubšího modelu (ICON-EU / ECMWF), a to
+  by pod jménem ICON-D2/HARMONIE-AROME nebyla pravda.
 - Automatická notifikace přes Telegram, když predikovaná oblačnost a srážky
   pro nadcházející noc klesnou pod nastavený práh (výchozí: oblačnost ≤ 30 %,
   pravděpodobnost srážek ≤ 20 %) u **alespoň jednoho** ze zapnutých modelů —

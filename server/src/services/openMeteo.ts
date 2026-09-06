@@ -14,6 +14,15 @@ export const MODEL_LABELS: Record<WeatherModel, string> = {
 
 export const DEFAULT_ENABLED_MODELS = WEATHER_MODELS.join(',');
 
+// Native high-resolution forecast horizon of each model, in hours. Open-Meteo silently
+// extends a named model's data past this point by blending in a coarser model (ICON-D2 ->
+// ICON-EU, HARMONIE-AROME -> ECMWF IFS) instead of returning null, so we can't detect the
+// cutoff from the data itself - it has to be enforced as an explicit time limit.
+export const MODEL_HORIZON_HOURS: Record<WeatherModel, number> = {
+  icon_d2: 48,
+  knmi_harmonie_arome_europe: 60,
+};
+
 export function isWeatherModel(value: string): value is WeatherModel {
   return (WEATHER_MODELS as readonly string[]).includes(value);
 }
@@ -53,7 +62,7 @@ export async function fetchOpenMeteoHourly(lat: number, lon: number): Promise<Op
     hourly: HOURLY_FIELDS.join(','),
     models: WEATHER_MODELS.join(','),
     timezone: 'UTC',
-    forecast_days: '3',
+    forecast_days: '4',
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
   const resp = await fetch(url);

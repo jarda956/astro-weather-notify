@@ -226,9 +226,27 @@ a {
 }
 
 .timeline-cell {
+  position: relative;
   flex: 1;
   height: 18px;
   border-radius: 2px;
+}
+
+.timeline-cell[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 130%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .timeline-axis-cell {

@@ -39,7 +39,7 @@ export default function NightTimeline({
                   key={point.time}
                   className="timeline-cell"
                   style={{ background: cloudColor(cover) }}
-                  title={`${formatHour(point.time)} - oblacnost ${cover ?? '?'}%`}
+                  data-tooltip={`${formatHour(point.time)} - oblacnost ${cover ?? '?'}%`}
                 />
               );
             })}

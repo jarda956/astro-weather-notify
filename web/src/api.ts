@@ -53,9 +53,18 @@ export const api = {
   deleteLocation: (id: number) =>
     request<{ ok: boolean }>(`/locations/${id}`, { method: 'DELETE' }),
   setSubscribers: (id: number, userIds: number[]) =>
-    request<{ subscriberIds: number[] }>(`/locations/${id}/subscribers`, {
+    request<{ subscriberIds: number[]; visibleTo: number[] }>(`/locations/${id}/subscribers`, {
       method: 'PUT',
       body: JSON.stringify({ userIds }),
+    }),
+  setVisibility: (id: number, userIds: number[]) =>
+    request<{ visibleTo: number[]; subscriberIds: number[] }>(`/locations/${id}/visibility`, {
+      method: 'PUT',
+      body: JSON.stringify({ userIds }),
+    }),
+  generateTelegramLinkFor: (locationId: number, userId: number) =>
+    request<{ code: string }>(`/locations/${locationId}/subscribers/${userId}/telegram-link`, {
+      method: 'POST',
     }),
   getForecast: (id: number) =>
     request<{ nights: NightForecast[] }>(`/locations/${id}/forecast`),

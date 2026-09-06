@@ -9,8 +9,21 @@ export const db = new Database(env.databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+const locationVisibilityExistedBefore = !!db
+  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'location_visibility'")
+  .get();
+
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
+
+// location_visibility is new: before it existed, every user could see every location, so
+// grandfather that in for existing data (only once - a location created after this migration
+// runs is private by default, and re-running the backfill on every startup would undo that).
+if (!locationVisibilityExistedBefore) {
+  db.exec(
+    'INSERT OR IGNORE INTO location_visibility (location_id, user_id) SELECT l.id, u.id FROM locations l CROSS JOIN users u'
+  );
+}
 
 // Lightweight migration for databases created before a column existed: schema.sql only
 // creates tables that don't exist yet, so upgrades need an explicit ALTER TABLE here.

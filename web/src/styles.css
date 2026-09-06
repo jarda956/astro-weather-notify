@@ -337,12 +337,19 @@ a {
   gap: 0.5rem;
 }
 
-.subscribers {
+.sharing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.sharing-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
-  margin-top: 0.5rem;
+  font-size: 0.85rem;
 }
 
 .checkbox-label {

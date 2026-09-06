@@ -26,6 +26,16 @@ CREATE TABLE IF NOT EXISTS location_subscribers (
   PRIMARY KEY (location_id, user_id)
 );
 
+-- Who besides the owner can even see a location (its forecast card). Being a subscriber
+-- implies being visible too, but not the other way round: someone can see a location
+-- without getting Telegram notifications for it. The owner is always implicitly visible
+-- (see locations.created_by) and doesn't need a row here.
+CREATE TABLE IF NOT EXISTS location_visibility (
+  location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (location_id, user_id)
+);
+
 -- Tracks the last known "is the sky good for this night" verdict per location,
 -- so the scheduler can notify again when that verdict flips (good <-> bad),
 -- not just the first time it becomes good.

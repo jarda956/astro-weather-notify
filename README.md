@@ -40,8 +40,15 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
   dopředu. Zpráva se pošle při první "bude jasno" pro danou noc a pak znovu
   jen tehdy, když se vyhodnocení pro tu noc změní (zhorší zpátky na "nebude
   jasno", nebo se znovu zlepší) - ne opakovaně beze změny.
-- U každé lokality lze zvlášť nastavit, kterým členům skupiny se mají
-  notifikace pro ni posílat (ne každý jezdí všude).
+- **Lokality jsou soukromé, dokud je vlastník nesdílí.** Kdo lokalitu založí,
+  je jediný, kdo ji vidí, může upravovat její parametry nebo ji smazat — pro
+  ostatní uživatele lokalita neexistuje, dokud jim ji vlastník nezpřístupní.
+  V Nastavení u své lokality vlastník zvlášť nastaví, komu se lokalita vůbec
+  ukáže ("vidí") a z toho, komu se navíc mají posílat Telegram notifikace
+  ("odběr") — odběr bez viditelnosti nejde. Pro uživatele, který ještě nemá
+  propojený Telegram, jde rovnou vygenerovat propojovací odkaz, který mu
+  vlastník pošle (např. WhatsAppem) — nemusí se kvůli tomu sám přihlašovat
+  do appky.
 - WhatsApp notifikace nejsou (zatím) implementované — vyžadují placený
   WhatsApp Business/Twilio účet. Pokud je budeš chtít doplnit, ozvi se.
 

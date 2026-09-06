@@ -15,6 +15,7 @@ export interface Location {
   enabledModels: string[];
   createdBy: number;
   subscriberIds: number[];
+  visibleTo: number[];
 }
 
 // Keep in sync with server/src/services/openMeteo.ts's WEATHER_MODELS/MODEL_LABELS.

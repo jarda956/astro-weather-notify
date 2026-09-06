@@ -141,49 +141,110 @@ function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) 
   );
 }
 
-function LocationSubscribers({
+// Owner-only control: who else can see this location at all ("Vidi"), and of those, who is
+// subscribed to Telegram notifications for it ("Odber"). A user must be visible before they
+// can be a subscriber - the checkbox is disabled until "Vidi" is checked, and the server
+// enforces the same rule independently.
+function LocationSharing({
   location,
-  users,
+  otherUsers,
+  botUsername,
   onChange,
 }: {
   location: Location;
-  users: PublicUser[];
-  onChange: (subscriberIds: number[]) => void;
+  otherUsers: PublicUser[];
+  botUsername: string | null;
+  onChange: (patch: Partial<Pick<Location, 'visibleTo' | 'subscriberIds'>>) => void;
 }) {
-  async function toggle(userId: number, checked: boolean) {
-    const next = checked
+  const [linkUrls, setLinkUrls] = useState<Record<number, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggleVisible(userId: number, checked: boolean) {
+    const nextVisible = checked
+      ? [...location.visibleTo, userId]
+      : location.visibleTo.filter((id) => id !== userId);
+    const { visibleTo, subscriberIds } = await api.setVisibility(location.id, nextVisible);
+    onChange({ visibleTo, subscriberIds });
+  }
+
+  async function toggleSubscriber(userId: number, checked: boolean) {
+    const nextSubscribers = checked
       ? [...location.subscriberIds, userId]
       : location.subscriberIds.filter((id) => id !== userId);
-    const { subscriberIds } = await api.setSubscribers(location.id, next);
-    onChange(subscriberIds);
+    const { subscriberIds, visibleTo } = await api.setSubscribers(location.id, nextSubscribers);
+    onChange({ subscriberIds, visibleTo });
+  }
+
+  async function handleGenerateLink(userId: number) {
+    setError(null);
+    try {
+      const { code } = await api.generateTelegramLinkFor(location.id, userId);
+      if (botUsername) {
+        setLinkUrls((prev) => ({ ...prev, [userId]: `https://t.me/${botUsername}?start=${code}` }));
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Nepodarilo se vygenerovat odkaz');
+    }
   }
 
   return (
-    <div className="subscribers">
-      <span className="muted small">Posilat upozorneni:</span>
-      {users.map((u) => (
-        <label key={u.id} className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={location.subscriberIds.includes(u.id)}
-            onChange={(e) => toggle(u.id, e.target.checked)}
-          />
-          {u.username}
-          {!u.telegramLinked && <span className="muted"> (Telegram nepropojen)</span>}
-        </label>
-      ))}
+    <div className="sharing">
+      <span className="muted small">Sdileni a odber notifikaci:</span>
+      {otherUsers.map((u) => {
+        const isVisible = location.visibleTo.includes(u.id);
+        const isSubscriber = location.subscriberIds.includes(u.id);
+        return (
+          <div key={u.id} className="sharing-row">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={isVisible}
+                onChange={(e) => toggleVisible(u.id, e.target.checked)}
+              />
+              {u.username} vidi
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={isSubscriber}
+                disabled={!isVisible}
+                onChange={(e) => toggleSubscriber(u.id, e.target.checked)}
+              />
+              odber Telegram
+            </label>
+            {isSubscriber && !u.telegramLinked && (
+              <>
+                <button type="button" onClick={() => handleGenerateLink(u.id)}>
+                  Vygenerovat odkaz
+                </button>
+                {linkUrls[u.id] && (
+                  <span className="small">
+                    Posli mu:{' '}
+                    <a href={linkUrls[u.id]} target="_blank" rel="noreferrer">
+                      {linkUrls[u.id]}
+                    </a>
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })}
+      {error && <div className="error">{error}</div>}
     </div>
   );
 }
 
 function LocationItem({
   location,
-  users,
+  otherUsers,
+  botUsername,
   onUpdated,
   onDeleted,
 }: {
   location: Location;
-  users: PublicUser[];
+  otherUsers: PublicUser[];
+  botUsername: string | null;
   onUpdated: (loc: Location) => void;
   onDeleted: (id: number) => void;
 }) {
@@ -302,10 +363,11 @@ function LocationItem({
           </div>
         </div>
       )}
-      <LocationSubscribers
+      <LocationSharing
         location={location}
-        users={users}
-        onChange={(subscriberIds) => onUpdated({ ...location, subscriberIds })}
+        otherUsers={otherUsers}
+        botUsername={botUsername}
+        onChange={(patch) => onUpdated({ ...location, ...patch })}
       />
     </li>
   );
@@ -457,23 +519,33 @@ function UsersSection({ currentUser }: { currentUser: PublicUser }) {
 export default function Settings({ currentUser }: { currentUser: PublicUser }) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
+  const [botUsername, setBotUsername] = useState<string | null>(null);
 
   useEffect(() => {
     api.listLocations().then(({ locations }) => setLocations(locations));
     api.listUsers().then(({ users }) => setUsers(users));
+    api.telegramStatus().then((s) => setBotUsername(s.botUsername));
   }, []);
+
+  const myLocations = locations.filter((l) => l.createdBy === currentUser.id);
+  const otherUsers = users.filter((u) => u.id !== currentUser.id);
 
   return (
     <div className="settings-page">
       <section className="settings-section">
-        <h2>Lokality</h2>
+        <h2>Moje lokality</h2>
+        <p className="muted small">
+          Lokality, které ti sdílel někdo jiný, uvidíš na Přehledu, ale spravovat je může jen
+          jejich vlastník.
+        </p>
         <AddLocationForm onCreated={(loc) => setLocations((prev) => [...prev, loc])} />
         <ul className="location-list">
-          {locations.map((loc) => (
+          {myLocations.map((loc) => (
             <LocationItem
               key={loc.id}
               location={loc}
-              users={users}
+              otherUsers={otherUsers}
+              botUsername={botUsername}
               onUpdated={(updated) =>
                 setLocations((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
               }

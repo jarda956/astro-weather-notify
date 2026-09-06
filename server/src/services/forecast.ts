@@ -2,7 +2,9 @@ import { getNightWindow } from './sun';
 import {
   fetchOpenMeteoHourly,
   hourlyValue,
+  MODEL_HORIZON_HOURS,
   MODEL_LABELS,
+  OpenMeteoHourly,
   WEATHER_MODELS,
   WeatherModel,
 } from './openMeteo';
@@ -47,22 +49,22 @@ export interface ForecastThresholds {
   precipitationProbabilityThreshold: number;
 }
 
+const MAX_NIGHTS = 5;
+
 function average(values: number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-export async function getNightForecast(
-  lat: number,
-  lon: number,
-  thresholds: ForecastThresholds,
-  enabledModels: WeatherModel[] = [...WEATHER_MODELS],
-  reference: Date = new Date()
-): Promise<NightForecast> {
-  const { sunset, sunrise, nightDate } = getNightWindow(lat, lon, reference);
-  const hourlyRaw = await fetchOpenMeteoHourly(lat, lon);
-
-  const times = hourlyRaw.time.map((t) => new Date(t.endsWith('Z') ? t : `${t}Z`));
+function buildNightForecast(
+  hourlyRaw: OpenMeteoHourly,
+  times: Date[],
+  sunset: Date,
+  sunrise: Date,
+  nightDate: string,
+  modelsForNight: WeatherModel[],
+  thresholds: ForecastThresholds
+): NightForecast {
   const nightIdx = times
     .map((t, i) => ({ t, i }))
     .filter(({ t }) => t >= sunset && t <= sunrise)
@@ -70,7 +72,7 @@ export async function getNightForecast(
 
   const hourly: HourlyPoint[] = nightIdx.map((i) => {
     const models = {} as Record<WeatherModel, HourlyModelPoint>;
-    for (const model of enabledModels) {
+    for (const model of modelsForNight) {
       models[model] = {
         cloudCover: hourlyValue(hourlyRaw, 'cloud_cover', model, i),
         cloudCoverLow: hourlyValue(hourlyRaw, 'cloud_cover_low', model, i),
@@ -86,7 +88,7 @@ export async function getNightForecast(
     return { time: hourlyRaw.time[i], models };
   });
 
-  const modelSummaries: ModelSummary[] = enabledModels.map((model) => {
+  const modelSummaries: ModelSummary[] = modelsForNight.map((model) => {
     const cloudCovers = hourly
       .map((h) => h.models[model].cloudCover)
       .filter((v): v is number => v !== null);
@@ -111,8 +113,8 @@ export async function getNightForecast(
     };
   });
 
-  // A location is "good" for the night if at least one of its enabled models (that
-  // actually has data) predicts clear enough skies - the two models don't need to agree.
+  // A night is "good" if at least one of its models (that actually has data) predicts
+  // clear enough skies - the models don't need to agree.
   const modelsWithData = modelSummaries.filter((m) => m.hasData);
   const overallGood = modelsWithData.some((m) => m.isGood);
 
@@ -124,4 +126,34 @@ export async function getNightForecast(
     modelSummaries,
     overallGood,
   };
+}
+
+/**
+ * Forecasts every upcoming night that at least one enabled model can genuinely cover with
+ * its native high-resolution data (see MODEL_HORIZON_HOURS) - further nights are omitted
+ * rather than silently backed by a coarser blended model Open-Meteo would otherwise supply.
+ */
+export async function getUpcomingNights(
+  lat: number,
+  lon: number,
+  thresholds: ForecastThresholds,
+  enabledModels: WeatherModel[] = [...WEATHER_MODELS],
+  reference: Date = new Date()
+): Promise<NightForecast[]> {
+  const hourlyRaw = await fetchOpenMeteoHourly(lat, lon);
+  const times = hourlyRaw.time.map((t) => new Date(t.endsWith('Z') ? t : `${t}Z`));
+
+  const nights: NightForecast[] = [];
+  let cursor = reference;
+  for (let i = 0; i < MAX_NIGHTS; i++) {
+    const { sunset, sunrise, nightDate } = getNightWindow(lat, lon, cursor);
+    const hoursToSunriseFromNow = (sunrise.getTime() - reference.getTime()) / (1000 * 60 * 60);
+    const modelsForNight = enabledModels.filter(
+      (m) => hoursToSunriseFromNow <= MODEL_HORIZON_HOURS[m]
+    );
+    if (modelsForNight.length === 0) break;
+    nights.push(buildNightForecast(hourlyRaw, times, sunset, sunrise, nightDate, modelsForNight, thresholds));
+    cursor = new Date(sunset.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return nights;
 }

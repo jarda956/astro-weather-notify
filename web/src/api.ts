@@ -58,7 +58,7 @@ export const api = {
       body: JSON.stringify({ userIds }),
     }),
   getForecast: (id: number) =>
-    request<{ forecast: NightForecast }>(`/locations/${id}/forecast`),
+    request<{ nights: NightForecast[] }>(`/locations/${id}/forecast`),
 
   telegramStatus: () =>
     request<{ enabled: boolean; botUsername: string | null; linked: boolean }>(

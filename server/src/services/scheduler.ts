@@ -1,9 +1,8 @@
 import cron from 'node-cron';
 import { db } from '../db';
 import { env } from '../env';
-import { getUpcomingNights } from './forecast';
+import { getUpcomingNights, NightForecast } from './forecast';
 import { sendTelegramMessage } from './telegramBot';
-import { getNightWindow } from './sun';
 import { parseEnabledModels } from './openMeteo';
 import { LocationRow, UserRow } from '../types';
 
@@ -27,30 +26,6 @@ async function checkAllLocations(): Promise<void> {
 }
 
 async function checkLocation(loc: LocationRow): Promise<void> {
-  const now = new Date();
-  const { sunset, nightDate } = getNightWindow(loc.latitude, loc.longitude, now);
-  const hoursUntilSunset = (sunset.getTime() - now.getTime()) / (1000 * 60 * 60);
-  const logPrefix = `[scheduler] ${loc.name} (night ${nightDate}):`;
-
-  // Only worth evaluating in the lookahead window before sunset (and shortly after),
-  // unless NOTIFY_IGNORE_WINDOW=true is set for manual testing.
-  if (
-    !env.notifyIgnoreWindow &&
-    (hoursUntilSunset > env.notifyLookaheadHours || hoursUntilSunset < -1)
-  ) {
-    console.log(
-      `${logPrefix} outside notification window (sunset in ${hoursUntilSunset.toFixed(
-        1
-      )}h, lookahead ${env.notifyLookaheadHours}h) - skipping`
-    );
-    return;
-  }
-
-  const previousRow = db
-    .prepare('SELECT last_good FROM notification_log WHERE location_id = ? AND night_date = ?')
-    .get(loc.id, nightDate) as { last_good: number } | undefined;
-  const previousGood = previousRow ? !!previousRow.last_good : null;
-
   const nights = await getUpcomingNights(
     loc.latitude,
     loc.longitude,
@@ -58,42 +33,11 @@ async function checkLocation(loc: LocationRow): Promise<void> {
       cloudCoverThreshold: loc.cloud_cover_threshold,
       precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
     },
-    parseEnabledModels(loc.enabled_models),
-    now
-  );
-  const forecast = nights[0];
-  if (!forecast) {
-    console.log(`${logPrefix} no model covers tonight yet - skipping`);
-    return;
-  }
-
-  console.log(
-    `${logPrefix} overallGood=${forecast.overallGood} - ${forecast.modelSummaries
-      .map(
-        (m) =>
-          `${m.label}: hasData=${m.hasData} avgCloud=${m.avgCloudCover?.toFixed(0) ?? 'n/a'}% maxPrecip=${
-            m.maxPrecipitationProbability ?? 'n/a'
-          }% isGood=${m.isGood}`
-      )
-      .join(' | ')}`
+    parseEnabledModels(loc.enabled_models)
   );
 
-  const currentGood = forecast.overallGood;
-
-  // Notify the first time a night turns out good, and again any time the verdict flips
-  // afterward (good -> bad = "it got worse", bad -> good = "it cleared up again"). A
-  // first check that comes back bad is just the baseline, not a change - no notification.
-  const stateChanged = previousGood !== null && previousGood !== currentGood;
-  const shouldNotify = stateChanged || (previousGood === null && currentGood);
-
-  // Always persist the latest verdict so the next check has something to compare against.
-  db.prepare(
-    `INSERT INTO notification_log (location_id, night_date, last_good) VALUES (?, ?, ?)
-     ON CONFLICT(location_id, night_date) DO UPDATE SET last_good = excluded.last_good, sent_at = datetime('now')`
-  ).run(loc.id, nightDate, currentGood ? 1 : 0);
-
-  if (!shouldNotify) {
-    console.log(`${logPrefix} no change since last check - skipping`);
+  if (nights.length === 0) {
+    console.log(`[scheduler] ${loc.name}: no enabled model covers any upcoming night yet - skipping`);
     return;
   }
 
@@ -105,20 +49,68 @@ async function checkLocation(loc: LocationRow): Promise<void> {
     )
     .all(loc.id) as UserRow[];
 
+  for (let i = 0; i < nights.length; i++) {
+    await checkNight(loc, nights[i], i, subscribers);
+  }
+}
+
+async function checkNight(
+  loc: LocationRow,
+  night: NightForecast,
+  index: number,
+  subscribers: UserRow[]
+): Promise<void> {
+  const logPrefix = `[scheduler] ${loc.name} (night ${night.nightDate}):`;
+
+  const previousRow = db
+    .prepare('SELECT last_good FROM notification_log WHERE location_id = ? AND night_date = ?')
+    .get(loc.id, night.nightDate) as { last_good: number } | undefined;
+  const previousGood = previousRow ? !!previousRow.last_good : null;
+  const currentGood = night.overallGood;
+
+  console.log(
+    `${logPrefix} overallGood=${currentGood} - ${night.modelSummaries
+      .map(
+        (m) =>
+          `${m.label}: hasData=${m.hasData} avgCloud=${m.avgCloudCover?.toFixed(0) ?? 'n/a'}% maxPrecip=${
+            m.maxPrecipitationProbability ?? 'n/a'
+          }% isGood=${m.isGood}`
+      )
+      .join(' | ')}`
+  );
+
+  // Notify the first time a night turns out good, and again any time the verdict flips
+  // afterward (good -> bad = "it got worse", bad -> good = "it cleared up again"). A
+  // first check that comes back bad is just the baseline, not a change - no notification.
+  const stateChanged = previousGood !== null && previousGood !== currentGood;
+  const shouldNotify = stateChanged || (previousGood === null && currentGood);
+
+  // Always persist the latest verdict so the next check has something to compare against.
+  db.prepare(
+    `INSERT INTO notification_log (location_id, night_date, last_good) VALUES (?, ?, ?)
+     ON CONFLICT(location_id, night_date) DO UPDATE SET last_good = excluded.last_good, sent_at = datetime('now')`
+  ).run(loc.id, night.nightDate, currentGood ? 1 : 0);
+
+  if (!shouldNotify) {
+    console.log(`${logPrefix} no change since last check - skipping`);
+    return;
+  }
+
   console.log(
     `${logPrefix} verdict is now ${currentGood ? 'good' : 'not good'} (changed=${stateChanged}), notifying ${
       subscribers.length
     } subscriber(s) with Telegram linked`
   );
 
-  const summaryLines = forecast.modelSummaries
+  const heading = nightHeading(index, night.sunset);
+  const summaryLines = night.modelSummaries
     .map((m) => `- ${m.label}: oblacnost ~${m.avgCloudCover?.toFixed(0) ?? '?'} %`)
     .join('\n');
   const message = currentGood
-    ? `Jasna obloha na noc: ${loc.name}\n` +
-      `Zapad slunce: ${formatTime(forecast.sunset)}, vychod: ${formatTime(forecast.sunrise)} (mistni cas)\n` +
+    ? `Jasna obloha ${heading}: ${loc.name}\n` +
+      `Zapad slunce: ${formatTime(night.sunset)}, vychod: ${formatTime(night.sunrise)} (mistni cas)\n` +
       summaryLines
-    : `Predpoved na noc se zhorsila: ${loc.name}\n` +
+    : `Predpoved na ${heading} se zhorsila: ${loc.name}\n` +
       `Uz nejspis nebude jasno.\n` +
       summaryLines;
 
@@ -129,7 +121,7 @@ async function checkLocation(loc: LocationRow): Promise<void> {
   }
 }
 
-// Telegram messages go to a Czech/Slovak astrophotography group, so render times in
+// Telegram messages go to a Czech/Slovak astrophotography group, so render times/dates in
 // Europe/Prague regardless of what timezone the server itself happens to run in.
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('cs-CZ', {
@@ -137,4 +129,16 @@ function formatTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function nightHeading(index: number, sunsetIso: string): string {
+  if (index === 0) return 'dnes v noci';
+  if (index === 1) return 'zitra v noci';
+  const label = new Date(sunsetIso).toLocaleDateString('cs-CZ', {
+    timeZone: 'Europe/Prague',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'numeric',
+  });
+  return `v noci ${label}`;
 }

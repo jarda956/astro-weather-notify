@@ -11,31 +11,35 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
   spuštění, další přidává administrátor v Nastavení).
 - Uložené lokality s GPS souřadnicemi, přidání ručně nebo výběrem místa na
   mapě.
-- Předpověď ze dvou nezávislých modelů:
+- Předpověď ze tří nezávislých modelů:
   - **ICON-D2** (DWD, ~2 km rozlišení, Střední Evropa)
-  - **HARMONIE-AROME** (KNMI, ~2 km, celoevropská doména)
+  - **ALADIN 1 km ČR** (ČHMÚ, otevřená data, jen území Česka)
+  - **ALADIN 2 km Střední Evropa** (ČHMÚ, otevřená data, širší doména včetně
+    Slovenska)
 
-  > Model **ALADIN** (dřív používaný ČHMÚ) bohužel nemá žádné veřejné/free
-  > API. HARMONIE-AROME je nejbližší dostupná náhrada srovnatelného
-  > rozlišení a pokrývá celé Česko i Slovensko.
+  ALADIN se ukázalo jako přece jen dostupný přes otevřená data ČHMÚ
+  (`opendata.chmi.cz`), zprostředkovaná stejným Open-Meteo API — appka tak
+  používá skutečný ALADIN, ne náhradu.
 
   U každé lokality lze v Nastavení zvlášť zapnout/vypnout, který z modelů se
-  pro ni vůbec bere v úvahu (např. když je jeden z nich pro danou oblast
-  nespolehlivý).
+  pro ni vůbec bere v úvahu (např. 1km ALADIN nemá smysl pro slovenské
+  lokality, protože jeho doména Slovensko vůbec nepokrývá).
 
   Dashboard ukazuje předpověď na **všechny nadcházející noci, které ještě
   pokrývá alespoň jeden zapnutý model jeho reálnými vysoko-rozlišenými daty**
-  (ICON-D2 cca 48 h dopředu, HARMONIE-AROME cca 60 h) — obvykle tedy dnešní a
+  (ICON-D2 cca 48 h dopředu, ALADIN cca 72 h) — obvykle tedy dnešní a
   zítřejší noc, večer i část noci pozítří. Dál appka nekouká záměrně: Open-Meteo
   by od té doby tiše doplňovalo data z hrubšího modelu (ICON-EU / ECMWF), a to
-  by pod jménem ICON-D2/HARMONIE-AROME nebyla pravda.
+  by pod jménem ICON-D2/ALADIN nebyla pravda.
 - Automatická notifikace přes Telegram, když predikovaná oblačnost a srážky
-  pro nadcházející noc klesnou pod nastavený práh (výchozí: oblačnost ≤ 30 %,
-  pravděpodobnost srážek ≤ 20 %) u **alespoň jednoho** ze zapnutých modelů —
-  modely se nemusí shodnout. Kontroluje se v posledních hodinách před
-  západem slunce; appka posílá zprávu při první "bude jasno" a pak znovu
-  jen tehdy, když se vyhodnocení pro danou noc změní (zhorší zpátky na
-  "nebude jasno", nebo se znovu zlepší) - ne opakovaně beze změny.
+  pro nějakou nadcházející noc klesnou pod nastavený práh (výchozí: oblačnost
+  ≤ 30 %, pravděpodobnost srážek ≤ 20 %) u **alespoň jednoho** ze zapnutých
+  modelů — modely se nemusí shodnout. Appka to hlídá pro **každou zobrazenou
+  noc zvlášť** (dnes, zítra, případně pozítří), ne jen pro tu nejbližší — takže
+  přijde upozornění třeba i na noc za dva dny, ať se dá naplánovat výjezd
+  dopředu. Zpráva se pošle při první "bude jasno" pro danou noc a pak znovu
+  jen tehdy, když se vyhodnocení pro tu noc změní (zhorší zpátky na "nebude
+  jasno", nebo se znovu zlepší) - ne opakovaně beze změny.
 - U každé lokality lze zvlášť nastavit, kterým členům skupiny se mají
   notifikace pro ni posílat (ne každý jezdí všude).
 - WhatsApp notifikace nejsou (zatím) implementované — vyžadují placený
@@ -105,9 +109,7 @@ systemctl enable --now astro-weather
 | `JWT_SECRET` | Tajný klíč pro přihlašovací session, vygeneruj např. `openssl rand -hex 32` |
 | `DATABASE_PATH` | Cesta k SQLite souboru |
 | `TELEGRAM_BOT_TOKEN` | Token bota od [@BotFather](https://t.me/BotFather); prázdné = Telegram notifikace vypnuté |
-| `NOTIFY_CRON` | Jak často se kontroluje předpověď (cron výraz, výchozí každou hodinu) |
-| `NOTIFY_LOOKAHEAD_HOURS` | Kolik hodin před západem slunce smí přijít notifikace na danou noc |
-| `NOTIFY_IGNORE_WINDOW` | Jen pro testování: `true` = kontrola proběhne kdykoliv během dne, ne jen v okně před západem slunce. V běžném provozu nech `false`. |
+| `NOTIFY_CRON` | Jak často se kontroluje předpověď (cron výraz, výchozí každou hodinu); kontroluje se vždy, ale zpráva se pošle jen při změně vyhodnocení dané noci |
 
 ## Nastavení Telegram bota
 
@@ -120,9 +122,10 @@ systemctl enable --now astro-weather
 
 ## Ruční test notifikace
 
-Notifikace se v běžném provozu posílá jen v úzkém okně před západem slunce,
-takže na reálnou notifikaci by se čekalo i několik dní. Takhle se dá ověřit
-funkčnost kdykoliv:
+Appka kontroluje všechny nadcházející noci na každý běh cronu
+(`NOTIFY_CRON`), bez ohledu na denní dobu — zpráva se ale pošle jen při
+změně vyhodnocení, takže pro test je potřeba tu změnu vynutit přes prahy
+dané lokality:
 
 1. **Najdi soubor s databází.** `DATABASE_PATH` v `.env` je relativní cesta,
    takže se skládá s pracovním adresářem procesu, ne s kořenem repozitáře:
@@ -134,31 +137,28 @@ funkčnost kdykoliv:
 
    Když si nejsi jistý, ověř si to přes `find /opt/astro-weather-notify -name "astro-weather.sqlite*"`.
 
-2. **Zapni testovací režim** v `.env`:
-   ```
-   NOTIFY_IGNORE_WINDOW=true
-   ```
-   a restartuj appku (`systemctl restart astro-weather`, případně
-   `docker compose restart`).
+2. **Vynuť "dobrou" noc** dočasně vysokými prahy u lokality (přes API, viz
+   níže), a restartuj appku (`systemctl restart astro-weather`, případně
+   `docker compose restart`) — restart hned spustí okamžitou kontrolu.
 
 3. **Sleduj log:**
    ```bash
    journalctl -u astro-weather -f
    ```
-   U každé lokality uvidíš řádek s `overallGood=...` a rozpisem obou modelů
-   (`hasData`, `avgCloud`, `maxPrecip`, `isGood`), případně
-   `sky is good, notifying N subscriber(s)...`.
+   U každé lokality a noci uvidíš řádek s `overallGood=...` a rozpisem
+   modelů (`hasData`, `avgCloud`, `maxPrecip`, `isGood`), a při změně i
+   `verdict is now good/not good ..., notifying N subscriber(s)...`.
 
-4. **Pokud appka hlásí `already notified for this night - skipping`**, pro
-   danou noc a lokalitu už notifikaci jednou odeslala (nebo vyhodnotila) a
-   podruhé ji ten samý den neposílá. Pro opakovaný test smaž záznam:
+4. **Pokud appka hlásí `no change since last check - skipping`**, pro danou
+   noc a lokalitu se vyhodnocení nezměnilo od minule, takže se zpráva
+   neposílá znovu (to je záměrné, ne chyba). Pro opakovaný test smaž
+   historii:
    ```bash
    sqlite3 <cesta-k-souboru>/astro-weather.sqlite "DELETE FROM notification_log;"
    systemctl restart astro-weather
    ```
 
-5. **Po testu úklid** — vrať `NOTIFY_IGNORE_WINDOW=false` v `.env` a
-   restartuj, ať appka mimo běžné okno večer neposílá notifikace.
+5. **Po testu úklid** — vrať prahy lokality na normální hodnoty (30/20).
 
 ## Vývoj
 

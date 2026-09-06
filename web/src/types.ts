@@ -20,7 +20,8 @@ export interface Location {
 // Keep in sync with server/src/services/openMeteo.ts's WEATHER_MODELS/MODEL_LABELS.
 export const MODEL_OPTIONS: { id: string; label: string }[] = [
   { id: 'icon_d2', label: 'ICON D2 (DWD)' },
-  { id: 'knmi_harmonie_arome_europe', label: 'HARMONIE-AROME (KNMI)' },
+  { id: 'chmi_aladin_cz_1km', label: 'ALADIN 1km CR (CHMU)' },
+  { id: 'chmi_aladin_central_europe_2km', label: 'ALADIN 2km stredni Evropa (CHMU)' },
 ];
 
 export interface HourlyModelPoint {

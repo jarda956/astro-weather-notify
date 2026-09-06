@@ -1,26 +1,34 @@
 // Weather models used for astrophotography forecasts.
 // - icon_d2: DWD ICON-D2, ~2km resolution, covers Central Europe including Czechia and most of Slovakia.
-// - knmi_harmonie_arome_europe: HARMONIE-AROME (KNMI), ~2km, pan-European domain.
-//   ALADIN itself (used historically by CHMI) has no public free API; HARMONIE-AROME is the
-//   closest available high-resolution alternative (same ACCORD model-consortium lineage that
-//   most former ALADIN countries have moved to) with full coverage of Czechia and Slovakia.
-export const WEATHER_MODELS = ['icon_d2', 'knmi_harmonie_arome_europe'] as const;
+// - chmi_aladin_cz_1km: CHMI's own ALADIN run, 1km resolution, Czechia only (does not reach Slovakia).
+// - chmi_aladin_central_europe_2km: CHMI's ALADIN, 2km resolution, wider Central European domain
+//   that does cover Slovakia. Deterministic (no ensemble), so it has no precipitation_probability -
+//   handled the same way as any other model missing a field (null, doesn't block "isGood").
+//   Named domains only, never chmi_aladin_seamless / icon_seamless etc.: those blend in a coarser
+//   global model (ECMWF/ICON-EU) past the native horizon, which would misrepresent it as ALADIN/ICON-D2.
+export const WEATHER_MODELS = [
+  'icon_d2',
+  'chmi_aladin_cz_1km',
+  'chmi_aladin_central_europe_2km',
+] as const;
 export type WeatherModel = (typeof WEATHER_MODELS)[number];
 
 export const MODEL_LABELS: Record<WeatherModel, string> = {
   icon_d2: 'ICON D2 (DWD)',
-  knmi_harmonie_arome_europe: 'HARMONIE-AROME (KNMI)',
+  chmi_aladin_cz_1km: 'ALADIN 1km CR (CHMU)',
+  chmi_aladin_central_europe_2km: 'ALADIN 2km stredni Evropa (CHMU)',
 };
 
 export const DEFAULT_ENABLED_MODELS = WEATHER_MODELS.join(',');
 
 // Native high-resolution forecast horizon of each model, in hours. Open-Meteo silently
-// extends a named model's data past this point by blending in a coarser model (ICON-D2 ->
-// ICON-EU, HARMONIE-AROME -> ECMWF IFS) instead of returning null, so we can't detect the
-// cutoff from the data itself - it has to be enforced as an explicit time limit.
+// extends a named model's data past this point by blending in a coarser model instead of
+// returning null, so we can't detect the cutoff from the data itself - it has to be
+// enforced as an explicit time limit.
 export const MODEL_HORIZON_HOURS: Record<WeatherModel, number> = {
   icon_d2: 48,
-  knmi_harmonie_arome_europe: 60,
+  chmi_aladin_cz_1km: 72,
+  chmi_aladin_central_europe_2km: 72,
 };
 
 export function isWeatherModel(value: string): value is WeatherModel {

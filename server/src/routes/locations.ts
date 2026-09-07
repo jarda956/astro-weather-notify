@@ -33,8 +33,10 @@ function serializeLocation(loc: LocationRow) {
   };
 }
 
-locationsRouter.get('/', (_req, res) => {
-  const locations = db.prepare('SELECT * FROM locations ORDER BY name').all() as LocationRow[];
+locationsRouter.get('/', (req, res) => {
+  const locations = db
+    .prepare('SELECT * FROM locations WHERE created_by = ? ORDER BY name')
+    .all(req.user!.id) as LocationRow[];
   res.json({ locations: locations.map(serializeLocation) });
 });
 
@@ -203,9 +205,7 @@ locationsRouter.delete('/:id/recipients/:recipientId', (req, res) => {
 
 locationsRouter.get('/:id/forecast', async (req, res) => {
   const id = Number(req.params.id);
-  const loc = db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as
-    | LocationRow
-    | undefined;
+  const loc = findOwned(id, req.user!.id);
   if (!loc) {
     res.status(404).json({ error: 'Location not found' });
     return;

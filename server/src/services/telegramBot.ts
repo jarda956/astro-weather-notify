@@ -10,6 +10,11 @@ export function startTelegramBot(): void {
 
   bot = new TelegramBot(env.telegramBotToken, { polling: true });
 
+  // Without this, a polling failure (bad token, Telegram API hiccup, network blip) becomes an
+  // unhandled promise rejection, which crashes the whole process on modern Node - not just
+  // Telegram notifications.
+  bot.on('polling_error', (err) => console.error('Telegram polling error', err));
+
   bot.getMe().then((me) => {
     botUsernameCache = me.username ?? null;
   });
@@ -19,24 +24,45 @@ export function startTelegramBot(): void {
     if (!code) {
       bot?.sendMessage(
         msg.chat.id,
-        'Ahoj! Propoj svůj účet kliknutím na odkaz "Propojit Telegram" v nastavení aplikace.'
+        'Ahoj! Propoj se kliknutím na odkaz, který ti poslal správce aplikace.'
       );
       return;
     }
+
     const user = db
       .prepare('SELECT id, username FROM users WHERE telegram_link_code = ?')
       .get(code) as { id: number; username: string } | undefined;
-    if (!user) {
-      bot?.sendMessage(msg.chat.id, 'Odkaz pro propojení není platný. Zkus to znovu z nastavení.');
+    if (user) {
+      db.prepare(
+        'UPDATE users SET telegram_chat_id = ?, telegram_link_code = NULL WHERE id = ?'
+      ).run(String(msg.chat.id), user.id);
+      bot?.sendMessage(
+        msg.chat.id,
+        `Hotovo! Účet "${user.username}" je propojen. Sem budou chodit upozornění na jasnou oblohu.`
+      );
       return;
     }
-    db.prepare(
-      'UPDATE users SET telegram_chat_id = ?, telegram_link_code = NULL WHERE id = ?'
-    ).run(String(msg.chat.id), user.id);
-    bot?.sendMessage(
-      msg.chat.id,
-      `Hotovo! Účet "${user.username}" je propojen. Sem budou chodit upozornění na jasnou oblohu.`
-    );
+
+    const recipient = db
+      .prepare(
+        `SELECT nr.id, nr.name, l.name AS location_name
+         FROM notification_recipients nr
+         JOIN locations l ON l.id = nr.location_id
+         WHERE nr.telegram_link_code = ?`
+      )
+      .get(code) as { id: number; name: string; location_name: string } | undefined;
+    if (recipient) {
+      db.prepare(
+        'UPDATE notification_recipients SET telegram_chat_id = ?, telegram_link_code = NULL WHERE id = ?'
+      ).run(String(msg.chat.id), recipient.id);
+      bot?.sendMessage(
+        msg.chat.id,
+        `Hotovo! Sem ti teď budou chodit upozornění na jasnou oblohu pro lokalitu "${recipient.location_name}".`
+      );
+      return;
+    }
+
+    bot?.sendMessage(msg.chat.id, 'Odkaz pro propojení není platný nebo už byl použitý.');
   });
 
   console.log('Telegram bot started (polling)');

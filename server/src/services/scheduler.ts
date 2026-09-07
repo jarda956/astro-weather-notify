@@ -4,7 +4,34 @@ import { env } from '../env';
 import { getUpcomingNights, NightForecast } from './forecast';
 import { sendTelegramMessage } from './telegramBot';
 import { parseEnabledModels } from './openMeteo';
-import { LocationRow, UserRow } from '../types';
+import { LocationRow } from '../types';
+
+interface Recipient {
+  label: string;
+  chatId: string;
+}
+
+// The location's owner is notified via their own account's Telegram link (if set) - they don't
+// need a notification_recipients row. Everyone else who has clicked their own link gets added
+// too.
+function recipientsFor(loc: LocationRow): Recipient[] {
+  const recipients: Recipient[] = [];
+  const owner = db
+    .prepare('SELECT username, telegram_chat_id FROM users WHERE id = ?')
+    .get(loc.created_by) as { username: string; telegram_chat_id: string | null } | undefined;
+  if (owner?.telegram_chat_id) {
+    recipients.push({ label: owner.username, chatId: owner.telegram_chat_id });
+  }
+  const guests = db
+    .prepare(
+      'SELECT name, telegram_chat_id FROM notification_recipients WHERE location_id = ? AND telegram_chat_id IS NOT NULL'
+    )
+    .all(loc.id) as { name: string; telegram_chat_id: string }[];
+  for (const g of guests) {
+    recipients.push({ label: g.name, chatId: g.telegram_chat_id });
+  }
+  return recipients;
+}
 
 export function startScheduler(): void {
   cron.schedule(env.notifyCron, () => {
@@ -41,16 +68,10 @@ async function checkLocation(loc: LocationRow): Promise<void> {
     return;
   }
 
-  const subscribers = db
-    .prepare(
-      `SELECT u.* FROM users u
-       JOIN location_subscribers ls ON ls.user_id = u.id
-       WHERE ls.location_id = ? AND u.telegram_chat_id IS NOT NULL`
-    )
-    .all(loc.id) as UserRow[];
+  const recipients = recipientsFor(loc);
 
   for (let i = 0; i < nights.length; i++) {
-    await checkNight(loc, nights[i], i, subscribers);
+    await checkNight(loc, nights[i], i, recipients);
   }
 }
 
@@ -58,7 +79,7 @@ async function checkNight(
   loc: LocationRow,
   night: NightForecast,
   index: number,
-  subscribers: UserRow[]
+  recipients: Recipient[]
 ): Promise<void> {
   const logPrefix = `[scheduler] ${loc.name} (night ${night.nightDate}):`;
 
@@ -98,8 +119,8 @@ async function checkNight(
 
   console.log(
     `${logPrefix} verdict is now ${currentGood ? 'good' : 'not good'} (changed=${stateChanged}), notifying ${
-      subscribers.length
-    } subscriber(s) with Telegram linked`
+      recipients.length
+    } recipient(s) with Telegram linked`
   );
 
   const heading = nightHeading(index, night.sunset);
@@ -114,9 +135,9 @@ async function checkNight(
       `Uz nejspis nebude jasno.\n` +
       summaryLines;
 
-  for (const user of subscribers) {
-    await sendTelegramMessage(user.telegram_chat_id as string, message).catch((err) =>
-      console.error(`Failed to notify user ${user.id}`, err)
+  for (const recipient of recipients) {
+    await sendTelegramMessage(recipient.chatId, message).catch((err) =>
+      console.error(`Failed to notify ${recipient.label}`, err)
     );
   }
 }

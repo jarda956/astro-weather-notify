@@ -5,6 +5,12 @@ export interface PublicUser {
   telegramLinked: boolean;
 }
 
+export interface Recipient {
+  id: number;
+  name: string;
+  telegramLinked: boolean;
+}
+
 export interface Location {
   id: number;
   name: string;
@@ -14,8 +20,7 @@ export interface Location {
   precipitationProbabilityThreshold: number;
   enabledModels: string[];
   createdBy: number;
-  subscriberIds: number[];
-  visibleTo: number[];
+  recipients: Recipient[];
 }
 
 // Keep in sync with server/src/services/openMeteo.ts's WEATHER_MODELS/MODEL_LABELS.

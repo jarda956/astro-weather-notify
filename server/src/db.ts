@@ -9,20 +9,30 @@ export const db = new Database(env.databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-const locationVisibilityExistedBefore = !!db
-  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'location_visibility'")
+const locationSubscribersExistedBefore = !!db
+  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'location_subscribers'")
   .get();
 
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
 
-// location_visibility is new: before it existed, every user could see every location, so
-// grandfather that in for existing data (only once - a location created after this migration
-// runs is private by default, and re-running the backfill on every startup would undo that).
-if (!locationVisibilityExistedBefore) {
-  db.exec(
-    'INSERT OR IGNORE INTO location_visibility (location_id, user_id) SELECT l.id, u.id FROM locations l CROSS JOIN users u'
-  );
+// notification_recipients replaces the old account-based sharing model (location_subscribers +
+// location_visibility): a recipient is now just a name and their own Telegram link, no app
+// account needed. Convert any existing subscriptions (skipping the location's own owner, who
+// is notified via their account's users.telegram_chat_id instead) so already-linked people
+// keep getting notified without having to click a new link, then drop the old tables. Only
+// runs once - it's gated on the old table's existence, and it's gone after this.
+if (locationSubscribersExistedBefore) {
+  db.exec(`
+    INSERT INTO notification_recipients (location_id, name, telegram_chat_id, telegram_link_code)
+    SELECT ls.location_id, u.username, u.telegram_chat_id, u.telegram_link_code
+    FROM location_subscribers ls
+    JOIN users u ON u.id = ls.user_id
+    JOIN locations l ON l.id = ls.location_id
+    WHERE ls.user_id != l.created_by
+  `);
+  db.exec('DROP TABLE IF EXISTS location_subscribers');
+  db.exec('DROP TABLE IF EXISTS location_visibility');
 }
 
 // Lightweight migration for databases created before a column existed: schema.sql only

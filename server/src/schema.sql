@@ -20,20 +20,18 @@ CREATE TABLE IF NOT EXISTS locations (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS location_subscribers (
+-- People who get Telegram notifications for a location without needing an app account of
+-- their own: just a name, plus their own telegram_chat_id once they click a link the owner
+-- generates and sends them (via telegram_link_code, same linking mechanism as users.*). The
+-- location's owner is notified separately via their own users.telegram_chat_id - they don't
+-- need a row here.
+CREATE TABLE IF NOT EXISTS notification_recipients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  PRIMARY KEY (location_id, user_id)
-);
-
--- Who besides the owner can even see a location (its forecast card). Being a subscriber
--- implies being visible too, but not the other way round: someone can see a location
--- without getting Telegram notifications for it. The owner is always implicitly visible
--- (see locations.created_by) and doesn't need a row here.
-CREATE TABLE IF NOT EXISTS location_visibility (
-  location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  PRIMARY KEY (location_id, user_id)
+  name TEXT NOT NULL,
+  telegram_chat_id TEXT,
+  telegram_link_code TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Tracks the last known "is the sky good for this night" verdict per location,

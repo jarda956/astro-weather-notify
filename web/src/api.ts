@@ -1,4 +1,4 @@
-import { Location, NightForecast, PublicUser } from './types';
+import { Location, NightForecast, PublicUser, Recipient } from './types';
 
 class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -34,14 +34,6 @@ export const api = {
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
   me: () => request<{ user: PublicUser }>('/auth/me'),
 
-  listUsers: () => request<{ users: PublicUser[] }>('/users'),
-  createUser: (username: string, password: string, isAdmin: boolean) =>
-    request<{ user: PublicUser }>('/users', {
-      method: 'POST',
-      body: JSON.stringify({ username, password, isAdmin }),
-    }),
-  deleteUser: (id: number) => request<{ ok: boolean }>(`/users/${id}`, { method: 'DELETE' }),
-
   listLocations: () => request<{ locations: Location[] }>('/locations'),
   createLocation: (data: Partial<Location>) =>
     request<{ location: Location }>('/locations', { method: 'POST', body: JSON.stringify(data) }),
@@ -52,20 +44,20 @@ export const api = {
     }),
   deleteLocation: (id: number) =>
     request<{ ok: boolean }>(`/locations/${id}`, { method: 'DELETE' }),
-  setSubscribers: (id: number, userIds: number[]) =>
-    request<{ subscriberIds: number[]; visibleTo: number[] }>(`/locations/${id}/subscribers`, {
-      method: 'PUT',
-      body: JSON.stringify({ userIds }),
-    }),
-  setVisibility: (id: number, userIds: number[]) =>
-    request<{ visibleTo: number[]; subscriberIds: number[] }>(`/locations/${id}/visibility`, {
-      method: 'PUT',
-      body: JSON.stringify({ userIds }),
-    }),
-  generateTelegramLinkFor: (locationId: number, userId: number) =>
-    request<{ code: string }>(`/locations/${locationId}/subscribers/${userId}/telegram-link`, {
+  addRecipient: (locationId: number, name: string) =>
+    request<{ recipient: Recipient; code: string }>(`/locations/${locationId}/recipients`, {
       method: 'POST',
+      body: JSON.stringify({ name }),
     }),
+  removeRecipient: (locationId: number, recipientId: number) =>
+    request<{ ok: boolean }>(`/locations/${locationId}/recipients/${recipientId}`, {
+      method: 'DELETE',
+    }),
+  regenerateRecipientLink: (locationId: number, recipientId: number) =>
+    request<{ code: string }>(
+      `/locations/${locationId}/recipients/${recipientId}/telegram-link`,
+      { method: 'POST' }
+    ),
   getForecast: (id: number) =>
     request<{ nights: NightForecast[] }>(`/locations/${id}/forecast`),
 

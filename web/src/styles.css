@@ -337,19 +337,30 @@ a {
   gap: 0.5rem;
 }
 
-.sharing {
+.recipients {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   margin-top: 0.5rem;
 }
 
-.sharing-row {
+.recipient-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
   font-size: 0.85rem;
+}
+
+.recipient-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.recipient-form input {
+  flex: 1;
+  min-width: 140px;
 }
 
 .checkbox-label {

@@ -7,8 +7,7 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
 
 ## Funkce
 
-- Přihlášení, více uživatelských účtů (první účet se založí při prvním
-  spuštění, další přidává administrátor v Nastavení).
+- Přihlášení jedním účtem (založí se při prvním spuštění appky).
 - Uložené lokality s GPS souřadnicemi, přidání ručně nebo výběrem místa na
   mapě.
 - Předpověď ze tří nezávislých modelů:
@@ -40,15 +39,13 @@ notifikaci vybraným lidem ze skupiny, když se blíží jasná noc.
   dopředu. Zpráva se pošle při první "bude jasno" pro danou noc a pak znovu
   jen tehdy, když se vyhodnocení pro tu noc změní (zhorší zpátky na "nebude
   jasno", nebo se znovu zlepší) - ne opakovaně beze změny.
-- **Lokality jsou soukromé, dokud je vlastník nesdílí.** Kdo lokalitu založí,
-  je jediný, kdo ji vidí, může upravovat její parametry nebo ji smazat — pro
-  ostatní uživatele lokalita neexistuje, dokud jim ji vlastník nezpřístupní.
-  V Nastavení u své lokality vlastník zvlášť nastaví, komu se lokalita vůbec
-  ukáže ("vidí") a z toho, komu se navíc mají posílat Telegram notifikace
-  ("odběr") — odběr bez viditelnosti nejde. Pro uživatele, který ještě nemá
-  propojený Telegram, jde rovnou vygenerovat propojovací odkaz, který mu
-  vlastník pošle (např. WhatsAppem) — nemusí se kvůli tomu sám přihlašovat
-  do appky.
+- **Odběratelé notifikací nepotřebují účet appky.** U lokality v Nastavení
+  napíšeš jméno člověka, appka rovnou vygeneruje Telegram odkaz — ten mu
+  pošleš (např. WhatsAppem), on jen v Telegramu stiskne Start a od té chvíle
+  mu chodí upozornění na jasnou oblohu pro tuhle konkrétní lokalitu. Žádné
+  heslo, žádné přihlašování do appky. Ty sám dostáváš notifikace na všechny
+  svoje lokality automaticky, jakmile máš v Nastavení propojený svůj vlastní
+  Telegram.
 - WhatsApp notifikace nejsou (zatím) implementované — vyžadují placený
   WhatsApp Business/Twilio účet. Pokud je budeš chtít doplnit, ozvi se.
 
@@ -123,9 +120,12 @@ systemctl enable --now astro-weather
 1. V Telegramu napiš [@BotFather](https://t.me/BotFather), vytvoř bota
    příkazem `/newbot`, zkopíruj token do `TELEGRAM_BOT_TOKEN` v `.env` a
    restartuj aplikaci.
-2. Každý uživatel si v aplikaci v Nastavení klikne na "Propojit Telegram",
-   otevře vygenerovaný odkaz a v Telegramu stiskne Start — tím se jeho účet
-   propojí a bude moct dostávat notifikace.
+2. **Tvoje vlastní notifikace:** v Nastavení klikni na "Propojit Telegram",
+   otevři vygenerovaný odkaz a v Telegramu stiskni Start.
+3. **Notifikace pro někoho dalšího:** u konkrétní lokality v Nastavení napiš
+   jeho jméno a klikni na "Přidat a vygenerovat odkaz" — vzniklý odkaz mu
+   pošli (např. WhatsAppem). Jakmile v Telegramu stiskne Start, začne mu
+   chodit upozornění jen pro tuhle lokalitu.
 
 ## Ruční test notifikace
 
@@ -154,7 +154,7 @@ dané lokality:
    ```
    U každé lokality a noci uvidíš řádek s `overallGood=...` a rozpisem
    modelů (`hasData`, `avgCloud`, `maxPrecip`, `isGood`), a při změně i
-   `verdict is now good/not good ..., notifying N subscriber(s)...`.
+   `verdict is now good/not good ..., notifying N recipient(s)...`.
 
 4. **Pokud appka hlásí `no change since last check - skipping`**, pro danou
    noc a lokalitu se vyhodnocení nezměnilo od minule, takže se zpráva

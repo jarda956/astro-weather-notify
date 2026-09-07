@@ -1,4 +1,4 @@
-import { Request, Response, Router } from 'express';
+import { Router } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { db } from '../db';
@@ -12,42 +12,11 @@ export const locationsRouter = Router();
 
 locationsRouter.use(requireAuth);
 
-function subscriberIds(locationId: number): number[] {
+function recipients(locationId: number) {
   const rows = db
-    .prepare('SELECT user_id FROM location_subscribers WHERE location_id = ?')
-    .all(locationId) as { user_id: number }[];
-  return rows.map((r) => r.user_id);
-}
-
-function visibleUserIds(locationId: number): number[] {
-  const rows = db
-    .prepare('SELECT user_id FROM location_visibility WHERE location_id = ?')
-    .all(locationId) as { user_id: number }[];
-  return rows.map((r) => r.user_id);
-}
-
-function isVisibleTo(locationId: number, userId: number): boolean {
-  return !!db
-    .prepare('SELECT 1 FROM location_visibility WHERE location_id = ? AND user_id = ?')
-    .get(locationId, userId);
-}
-
-// Owner-only actions respond 404 (not 403) to someone who can't even see the location, so a
-// location's existence and ownership never leaks to people it hasn't been shared with.
-function requireOwner(
-  req: Request,
-  res: Response,
-  locationId: number,
-  ownerId: number,
-  message: string
-): boolean {
-  if (ownerId === req.user!.id) return true;
-  if (isVisibleTo(locationId, req.user!.id)) {
-    res.status(403).json({ error: message });
-  } else {
-    res.status(404).json({ error: 'Location not found' });
-  }
-  return false;
+    .prepare('SELECT id, name, telegram_chat_id FROM notification_recipients WHERE location_id = ? ORDER BY id')
+    .all(locationId) as { id: number; name: string; telegram_chat_id: string | null }[];
+  return rows.map((r) => ({ id: r.id, name: r.name, telegramLinked: !!r.telegram_chat_id }));
 }
 
 function serializeLocation(loc: LocationRow) {
@@ -60,22 +29,12 @@ function serializeLocation(loc: LocationRow) {
     precipitationProbabilityThreshold: loc.precipitation_probability_threshold,
     enabledModels: parseEnabledModels(loc.enabled_models),
     createdBy: loc.created_by,
-    subscriberIds: subscriberIds(loc.id),
-    visibleTo: visibleUserIds(loc.id),
+    recipients: recipients(loc.id),
   };
 }
 
-// A location is only ever returned to its owner or someone it's been explicitly shared with -
-// no one else can see it exists, let alone edit or subscribe to it.
-locationsRouter.get('/', (req, res) => {
-  const locations = db
-    .prepare(
-      `SELECT * FROM locations
-       WHERE created_by = ?
-          OR id IN (SELECT location_id FROM location_visibility WHERE user_id = ?)
-       ORDER BY name`
-    )
-    .all(req.user!.id, req.user!.id) as LocationRow[];
+locationsRouter.get('/', (_req, res) => {
+  const locations = db.prepare('SELECT * FROM locations ORDER BY name').all() as LocationRow[];
   res.json({ locations: locations.map(serializeLocation) });
 });
 
@@ -110,29 +69,23 @@ locationsRouter.post('/', (req, res) => {
       enabledModels?.join(',') ?? DEFAULT_ENABLED_MODELS,
       req.user!.id
     );
-  // New locations are private to their creator until shared - the creator is subscribed to
-  // notifications for it by default (they don't need a location_visibility row, since owners
-  // are always implicitly visible).
-  db.prepare('INSERT INTO location_subscribers (location_id, user_id) VALUES (?, ?)').run(
-    info.lastInsertRowid,
-    req.user!.id
-  );
   const loc = db.prepare('SELECT * FROM locations WHERE id = ?').get(info.lastInsertRowid) as LocationRow;
   res.status(201).json({ location: serializeLocation(loc) });
 });
 
 const updateSchema = locationSchema.partial();
 
-locationsRouter.put('/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const existing = db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as
+function findOwned(id: number, ownerId: number): LocationRow | undefined {
+  return db.prepare('SELECT * FROM locations WHERE id = ? AND created_by = ?').get(id, ownerId) as
     | LocationRow
     | undefined;
+}
+
+locationsRouter.put('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const existing = findOwned(id, req.user!.id);
   if (!existing) {
     res.status(404).json({ error: 'Location not found' });
-    return;
-  }
-  if (!requireOwner(req, res, id, existing.created_by, 'Only the owner can edit this location')) {
     return;
   }
   const parsed = updateSchema.safeParse(req.body);
@@ -161,130 +114,91 @@ locationsRouter.put('/:id', (req, res) => {
 
 locationsRouter.delete('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT created_by FROM locations WHERE id = ?').get(id) as
-    | { created_by: number }
-    | undefined;
+  const existing = findOwned(id, req.user!.id);
   if (!existing) {
     res.status(404).json({ error: 'Location not found' });
-    return;
-  }
-  if (!requireOwner(req, res, id, existing.created_by, 'Only the owner can delete this location')) {
     return;
   }
   db.prepare('DELETE FROM locations WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 
-const idListSchema = z.object({
-  userIds: z.array(z.number().int()),
+const recipientSchema = z.object({
+  name: z.string().trim().min(1).max(60),
 });
 
-// Owner-only: who besides the owner is subscribed to Telegram notifications for this location.
-// Subscribing implies visibility, so subscribers who aren't already shared with also get added
-// to location_visibility here.
-locationsRouter.put('/:id/subscribers', (req, res) => {
+// Add a notification recipient (just a name) and immediately generate their Telegram link
+// code in one step, so the owner can add a name and hand out a ready link right away.
+locationsRouter.post('/:id/recipients', (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT created_by FROM locations WHERE id = ?').get(id) as
-    | { created_by: number }
-    | undefined;
+  const existing = findOwned(id, req.user!.id);
   if (!existing) {
     res.status(404).json({ error: 'Location not found' });
-    return;
-  }
-  if (
-    !requireOwner(req, res, id, existing.created_by, 'Only the owner can manage subscribers for this location')
-  ) {
-    return;
-  }
-  const parsed = idListSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid subscriber list' });
-    return;
-  }
-  const tx = db.transaction((userIds: number[]) => {
-    db.prepare('DELETE FROM location_subscribers WHERE location_id = ?').run(id);
-    const insertSub = db.prepare(
-      'INSERT OR IGNORE INTO location_subscribers (location_id, user_id) VALUES (?, ?)'
-    );
-    const insertVis = db.prepare(
-      'INSERT OR IGNORE INTO location_visibility (location_id, user_id) VALUES (?, ?)'
-    );
-    for (const userId of userIds) {
-      insertSub.run(id, userId);
-      if (userId !== existing.created_by) insertVis.run(id, userId);
-    }
-  });
-  tx(parsed.data.userIds);
-  res.json({ subscriberIds: subscriberIds(id), visibleTo: visibleUserIds(id) });
-});
-
-// Owner-only: who besides the owner can see this location at all. Removing someone from
-// visibility also drops their subscription, if any - they can't be subscribed to something
-// they can no longer see.
-locationsRouter.put('/:id/visibility', (req, res) => {
-  const id = Number(req.params.id);
-  const existing = db.prepare('SELECT created_by FROM locations WHERE id = ?').get(id) as
-    | { created_by: number }
-    | undefined;
-  if (!existing) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
-  }
-  if (
-    !requireOwner(req, res, id, existing.created_by, 'Only the owner can manage sharing for this location')
-  ) {
-    return;
-  }
-  const parsed = idListSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid visibility list' });
-    return;
-  }
-  const userIds = parsed.data.userIds.filter((uid) => uid !== existing.created_by);
-  const tx = db.transaction((ids: number[]) => {
-    db.prepare('DELETE FROM location_visibility WHERE location_id = ?').run(id);
-    const insert = db.prepare(
-      'INSERT OR IGNORE INTO location_visibility (location_id, user_id) VALUES (?, ?)'
-    );
-    for (const uid of ids) insert.run(id, uid);
-    db.prepare(
-      `DELETE FROM location_subscribers
-       WHERE location_id = ? AND user_id != ?
-         AND user_id NOT IN (SELECT user_id FROM location_visibility WHERE location_id = ?)`
-    ).run(id, existing.created_by, id);
-  });
-  tx(userIds);
-  res.json({ visibleTo: visibleUserIds(id), subscriberIds: subscriberIds(id) });
-});
-
-// Owner-only: generate a Telegram link code for someone the owner is sharing this location
-// with, so the owner can hand them a ready-to-click link instead of asking them to log into
-// the app themselves and do it from Settings.
-locationsRouter.post('/:id/subscribers/:userId/telegram-link', (req, res) => {
-  const id = Number(req.params.id);
-  const targetUserId = Number(req.params.userId);
-  const existing = db.prepare('SELECT created_by FROM locations WHERE id = ?').get(id) as
-    | { created_by: number }
-    | undefined;
-  if (!existing) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
-  }
-  if (!requireOwner(req, res, id, existing.created_by, 'Only the owner can do this')) {
     return;
   }
   if (!env.telegramBotToken) {
     res.status(400).json({ error: 'Telegram notifications are not configured on this server' });
     return;
   }
-  const targetUser = db.prepare('SELECT id FROM users WHERE id = ?').get(targetUserId);
-  if (!targetUser) {
-    res.status(404).json({ error: 'User not found' });
+  const parsed = recipientSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid recipient name' });
     return;
   }
   const code = crypto.randomBytes(12).toString('hex');
-  db.prepare('UPDATE users SET telegram_link_code = ? WHERE id = ?').run(code, targetUserId);
+  const info = db
+    .prepare(
+      'INSERT INTO notification_recipients (location_id, name, telegram_link_code) VALUES (?, ?, ?)'
+    )
+    .run(id, parsed.data.name, code);
+  res.status(201).json({
+    recipient: { id: info.lastInsertRowid, name: parsed.data.name, telegramLinked: false },
+    code,
+  });
+});
+
+// Generate a fresh link code for an existing recipient (e.g. their first link expired unused,
+// or they're setting up a new phone).
+locationsRouter.post('/:id/recipients/:recipientId/telegram-link', (req, res) => {
+  const id = Number(req.params.id);
+  const recipientId = Number(req.params.recipientId);
+  const existing = findOwned(id, req.user!.id);
+  if (!existing) {
+    res.status(404).json({ error: 'Location not found' });
+    return;
+  }
+  if (!env.telegramBotToken) {
+    res.status(400).json({ error: 'Telegram notifications are not configured on this server' });
+    return;
+  }
+  const recipient = db
+    .prepare('SELECT id FROM notification_recipients WHERE id = ? AND location_id = ?')
+    .get(recipientId, id) as { id: number } | undefined;
+  if (!recipient) {
+    res.status(404).json({ error: 'Recipient not found' });
+    return;
+  }
+  const code = crypto.randomBytes(12).toString('hex');
+  db.prepare('UPDATE notification_recipients SET telegram_link_code = ? WHERE id = ?').run(
+    code,
+    recipientId
+  );
   res.json({ code });
+});
+
+locationsRouter.delete('/:id/recipients/:recipientId', (req, res) => {
+  const id = Number(req.params.id);
+  const recipientId = Number(req.params.recipientId);
+  const existing = findOwned(id, req.user!.id);
+  if (!existing) {
+    res.status(404).json({ error: 'Location not found' });
+    return;
+  }
+  db.prepare('DELETE FROM notification_recipients WHERE id = ? AND location_id = ?').run(
+    recipientId,
+    id
+  );
+  res.json({ ok: true });
 });
 
 locationsRouter.get('/:id/forecast', async (req, res) => {
@@ -293,12 +207,6 @@ locationsRouter.get('/:id/forecast', async (req, res) => {
     | LocationRow
     | undefined;
   if (!loc) {
-    res.status(404).json({ error: 'Location not found' });
-    return;
-  }
-  if (loc.created_by !== req.user!.id && !isVisibleTo(id, req.user!.id)) {
-    // Same reasoning as requireOwner: don't reveal that a location exists to someone it
-    // hasn't been shared with.
     res.status(404).json({ error: 'Location not found' });
     return;
   }
@@ -317,3 +225,4 @@ locationsRouter.get('/:id/forecast', async (req, res) => {
     res.status(502).json({ error: 'Failed to fetch weather forecast', details: String(err) });
   }
 });
+

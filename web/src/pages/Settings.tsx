@@ -141,95 +141,99 @@ function AddLocationForm({ onCreated }: { onCreated: (loc: Location) => void }) 
   );
 }
 
-// Owner-only control: who else can see this location at all ("Vidi"), and of those, who is
-// subscribed to Telegram notifications for it ("Odber"). A user must be visible before they
-// can be a subscriber - the checkbox is disabled until "Vidi" is checked, and the server
-// enforces the same rule independently.
-function LocationSharing({
+// Recipients aren't app accounts - just a name plus their own Telegram link. Adding one
+// immediately generates a ready-to-send link; each existing recipient can get a fresh link
+// (e.g. the first one expired unused) or be removed.
+function LocationRecipients({
   location,
-  otherUsers,
   botUsername,
   onChange,
 }: {
   location: Location;
-  otherUsers: PublicUser[];
   botUsername: string | null;
-  onChange: (patch: Partial<Pick<Location, 'visibleTo' | 'subscriberIds'>>) => void;
+  onChange: (recipients: Location['recipients']) => void;
 }) {
+  const [name, setName] = useState('');
   const [linkUrls, setLinkUrls] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  async function toggleVisible(userId: number, checked: boolean) {
-    const nextVisible = checked
-      ? [...location.visibleTo, userId]
-      : location.visibleTo.filter((id) => id !== userId);
-    const { visibleTo, subscriberIds } = await api.setVisibility(location.id, nextVisible);
-    onChange({ visibleTo, subscriberIds });
+  function linkFor(code: string): string | null {
+    return botUsername ? `https://t.me/${botUsername}?start=${code}` : null;
   }
 
-  async function toggleSubscriber(userId: number, checked: boolean) {
-    const nextSubscribers = checked
-      ? [...location.subscriberIds, userId]
-      : location.subscriberIds.filter((id) => id !== userId);
-    const { subscriberIds, visibleTo } = await api.setSubscribers(location.id, nextSubscribers);
-    onChange({ subscriberIds, visibleTo });
-  }
-
-  async function handleGenerateLink(userId: number) {
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
     setError(null);
     try {
-      const { code } = await api.generateTelegramLinkFor(location.id, userId);
-      if (botUsername) {
-        setLinkUrls((prev) => ({ ...prev, [userId]: `https://t.me/${botUsername}?start=${code}` }));
-      }
+      const { recipient, code } = await api.addRecipient(location.id, name.trim());
+      onChange([...location.recipients, recipient]);
+      const url = linkFor(code);
+      if (url) setLinkUrls((prev) => ({ ...prev, [recipient.id]: url }));
+      setName('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Nepodarilo se pridat odberatele');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRegenerate(recipientId: number) {
+    setError(null);
+    try {
+      const { code } = await api.regenerateRecipientLink(location.id, recipientId);
+      const url = linkFor(code);
+      if (url) setLinkUrls((prev) => ({ ...prev, [recipientId]: url }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Nepodarilo se vygenerovat odkaz');
     }
   }
 
+  async function handleRemove(recipientId: number) {
+    if (!confirm('Odebrat tohoto odberatele?')) return;
+    await api.removeRecipient(location.id, recipientId);
+    onChange(location.recipients.filter((r) => r.id !== recipientId));
+  }
+
   return (
-    <div className="sharing">
-      <span className="muted small">Sdileni a odber notifikaci:</span>
-      {otherUsers.map((u) => {
-        const isVisible = location.visibleTo.includes(u.id);
-        const isSubscriber = location.subscriberIds.includes(u.id);
-        return (
-          <div key={u.id} className="sharing-row">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={isVisible}
-                onChange={(e) => toggleVisible(u.id, e.target.checked)}
-              />
-              {u.username} vidi
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={isSubscriber}
-                disabled={!isVisible}
-                onChange={(e) => toggleSubscriber(u.id, e.target.checked)}
-              />
-              odber Telegram
-            </label>
-            {isSubscriber && !u.telegramLinked && (
-              <>
-                <button type="button" onClick={() => handleGenerateLink(u.id)}>
-                  Vygenerovat odkaz
-                </button>
-                {linkUrls[u.id] && (
-                  <span className="small">
-                    Posli mu:{' '}
-                    <a href={linkUrls[u.id]} target="_blank" rel="noreferrer">
-                      {linkUrls[u.id]}
-                    </a>
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        );
-      })}
+    <div className="recipients">
+      <span className="muted small">Odberatele notifikaci:</span>
+      {location.recipients.map((r) => (
+        <div key={r.id} className="recipient-row">
+          <span>
+            {r.name} {r.telegramLinked && <span className="muted small">(propojeno)</span>}
+          </span>
+          {!r.telegramLinked && (
+            <button type="button" onClick={() => handleRegenerate(r.id)}>
+              {linkUrls[r.id] ? 'Novy odkaz' : 'Vygenerovat odkaz'}
+            </button>
+          )}
+          <button type="button" onClick={() => handleRemove(r.id)}>
+            Smazat
+          </button>
+          {!r.telegramLinked && linkUrls[r.id] && (
+            <span className="small">
+              Posli mu:{' '}
+              <a href={linkUrls[r.id]} target="_blank" rel="noreferrer">
+                {linkUrls[r.id]}
+              </a>
+            </span>
+          )}
+        </div>
+      ))}
+      <form className="recipient-form" onSubmit={handleAdd}>
+        <input
+          placeholder="Jmeno (napr. Marek)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <button type="submit" disabled={busy}>
+          Pridat a vygenerovat odkaz
+        </button>
+      </form>
       {error && <div className="error">{error}</div>}
     </div>
   );
@@ -237,13 +241,11 @@ function LocationSharing({
 
 function LocationItem({
   location,
-  otherUsers,
   botUsername,
   onUpdated,
   onDeleted,
 }: {
   location: Location;
-  otherUsers: PublicUser[];
   botUsername: string | null;
   onUpdated: (loc: Location) => void;
   onDeleted: (id: number) => void;
@@ -276,7 +278,7 @@ function LocationItem({
         precipitationProbabilityThreshold,
         enabledModels,
       });
-      onUpdated({ ...updated, subscriberIds: location.subscriberIds });
+      onUpdated(updated);
       setEditing(false);
       setError(null);
     } catch (err) {
@@ -363,11 +365,10 @@ function LocationItem({
           </div>
         </div>
       )}
-      <LocationSharing
+      <LocationRecipients
         location={location}
-        otherUsers={otherUsers}
         botUsername={botUsername}
-        onChange={(patch) => onUpdated({ ...location, ...patch })}
+        onChange={(recipients) => onUpdated({ ...location, recipients })}
       />
     </li>
   );
@@ -403,7 +404,7 @@ function TelegramSection() {
 
   return (
     <section className="settings-section">
-      <h2>Telegram notifikace</h2>
+      <h2>Tvoje notifikace</h2>
       {!status.enabled && (
         <p className="muted">
           Telegram bot neni na serveru nastaven (chybi TELEGRAM_BOT_TOKEN v .env).
@@ -411,7 +412,7 @@ function TelegramSection() {
       )}
       {status.enabled && status.linked && (
         <div>
-          <p>Tvuj ucet je propojen s Telegramem.</p>
+          <p>Tvuj ucet je propojen s Telegramem - dostavas upozorneni na vsechny svoje lokality.</p>
           <button onClick={handleUnlink}>Odpojit Telegram</button>
         </div>
       )}
@@ -437,114 +438,26 @@ function TelegramSection() {
   );
 }
 
-function UsersSection({ currentUser }: { currentUser: PublicUser }) {
-  const [users, setUsers] = useState<PublicUser[]>([]);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function refresh() {
-    api.listUsers().then(({ users }) => setUsers(users));
-  }
-
-  useEffect(refresh, []);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.createUser(username, password, isAdmin);
-      setUsername('');
-      setPassword('');
-      setIsAdmin(false);
-      refresh();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Vytvoreni uctu se nezdarilo');
-    }
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm('Opravdu smazat tento ucet?')) return;
-    await api.deleteUser(id);
-    refresh();
-  }
-
-  return (
-    <section className="settings-section">
-      <h2>Uzivatelske ucty</h2>
-      <ul className="user-list">
-        {users.map((u) => (
-          <li key={u.id}>
-            {u.username} {u.isAdmin && <span className="badge">admin</span>}
-            {u.id !== currentUser.id && (
-              <button type="button" onClick={() => handleDelete(u.id)}>
-                Smazat
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      <form className="location-form" onSubmit={handleCreate}>
-        <input
-          placeholder="Uzivatelske jmeno"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          minLength={3}
-        />
-        <input
-          type="password"
-          placeholder="Heslo"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={8}
-        />
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={isAdmin}
-            onChange={(e) => setIsAdmin(e.target.checked)}
-          />
-          Admin
-        </label>
-        <button type="submit">Pridat ucet</button>
-        {error && <div className="error">{error}</div>}
-      </form>
-    </section>
-  );
-}
-
-export default function Settings({ currentUser }: { currentUser: PublicUser }) {
+// currentUser is accepted (not read) to keep the prop shape App.tsx already passes.
+export default function Settings({}: { currentUser: PublicUser }) {
   const [locations, setLocations] = useState<Location[]>([]);
-  const [users, setUsers] = useState<PublicUser[]>([]);
   const [botUsername, setBotUsername] = useState<string | null>(null);
 
   useEffect(() => {
     api.listLocations().then(({ locations }) => setLocations(locations));
-    api.listUsers().then(({ users }) => setUsers(users));
     api.telegramStatus().then((s) => setBotUsername(s.botUsername));
   }, []);
-
-  const myLocations = locations.filter((l) => l.createdBy === currentUser.id);
-  const otherUsers = users.filter((u) => u.id !== currentUser.id);
 
   return (
     <div className="settings-page">
       <section className="settings-section">
-        <h2>Moje lokality</h2>
-        <p className="muted small">
-          Lokality, které ti sdílel někdo jiný, uvidíš na Přehledu, ale spravovat je může jen
-          jejich vlastník.
-        </p>
+        <h2>Lokality</h2>
         <AddLocationForm onCreated={(loc) => setLocations((prev) => [...prev, loc])} />
         <ul className="location-list">
-          {myLocations.map((loc) => (
+          {locations.map((loc) => (
             <LocationItem
               key={loc.id}
               location={loc}
-              otherUsers={otherUsers}
               botUsername={botUsername}
               onUpdated={(updated) =>
                 setLocations((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
@@ -556,8 +469,6 @@ export default function Settings({ currentUser }: { currentUser: PublicUser }) {
       </section>
 
       <TelegramSection />
-
-      {currentUser.isAdmin && <UsersSection currentUser={currentUser} />}
     </div>
   );
 }

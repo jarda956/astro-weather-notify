@@ -19,10 +19,10 @@ function visibilityColor(vis: number | null): string {
 
 function windColor(speed: number | null): string {
   if (speed === null) return '#444';
-  // Open-Meteo's default wind speed unit is km/h. Calm (<10 km/h) is ideal for a steady
-  // tripod/mount; above ~30 km/h starts to matter for long exposures.
-  const clamped = Math.min(Math.max(speed, 0), 40);
-  const lightness = 25 + (clamped / 40) * 55;
+  // Wind speed is requested from Open-Meteo in m/s. Calm (<3 m/s) is ideal for a steady
+  // tripod/mount; above ~11 m/s starts to matter for long exposures.
+  const clamped = Math.min(Math.max(speed, 0), 11);
+  const lightness = 25 + (clamped / 11) * 55;
   return `hsl(160, 40%, ${lightness}%)`;
 }
 
@@ -125,7 +125,7 @@ export default function NightTimeline({
                 model={summary.model}
                 getValue={(h, m) => h.models[m]?.windSpeed ?? null}
                 getColor={windColor}
-                formatTooltip={(hour, v) => `${hour} - vitr ${v ?? '?'} km/h`}
+                formatTooltip={(hour, v) => `${hour} - vitr ${v ?? '?'} m/s`}
               />
             )}
           </div>

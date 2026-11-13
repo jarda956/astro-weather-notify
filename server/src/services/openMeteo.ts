@@ -71,6 +71,7 @@ export async function fetchOpenMeteoHourly(lat: number, lon: number): Promise<Op
     models: WEATHER_MODELS.join(','),
     timezone: 'UTC',
     forecast_days: '4',
+    wind_speed_unit: 'ms',
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
   const resp = await fetch(url);

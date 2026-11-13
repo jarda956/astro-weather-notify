@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { Location } from '../types';
 import LocationCard from '../components/LocationCard';
+import { useDisplayPrefs } from '../displayPrefs';
 
 export default function Dashboard() {
   const [locations, setLocations] = useState<Location[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { showVisibility, showWind } = useDisplayPrefs();
 
   useEffect(() => {
     api
@@ -30,7 +32,12 @@ export default function Dashboard() {
   return (
     <div className="location-grid">
       {locations.map((loc) => (
-        <LocationCard key={loc.id} location={loc} />
+        <LocationCard
+          key={loc.id}
+          location={loc}
+          showVisibility={showVisibility}
+          showWind={showWind}
+        />
       ))}
     </div>
   );

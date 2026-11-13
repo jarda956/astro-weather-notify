@@ -23,7 +23,17 @@ function nightHeading(index: number, sunsetIso: string): string {
   });
 }
 
-function NightBlock({ night, index }: { night: NightForecast; index: number }) {
+function NightBlock({
+  night,
+  index,
+  showVisibility,
+  showWind,
+}: {
+  night: NightForecast;
+  index: number;
+  showVisibility: boolean;
+  showWind: boolean;
+}) {
   return (
     <div className="night-block">
       <div className="night-block-header">
@@ -49,12 +59,25 @@ function NightBlock({ night, index }: { night: NightForecast; index: number }) {
           </div>
         ))}
       </div>
-      <NightTimeline hourly={night.hourly} modelSummaries={night.modelSummaries} />
+      <NightTimeline
+        hourly={night.hourly}
+        modelSummaries={night.modelSummaries}
+        showVisibility={showVisibility}
+        showWind={showWind}
+      />
     </div>
   );
 }
 
-export default function LocationCard({ location }: { location: Location }) {
+export default function LocationCard({
+  location,
+  showVisibility,
+  showWind,
+}: {
+  location: Location;
+  showVisibility: boolean;
+  showWind: boolean;
+}) {
   const [nights, setNights] = useState<NightForecast[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,7 +125,13 @@ export default function LocationCard({ location }: { location: Location }) {
       {nights && !loading && (
         <div className="night-list">
           {nights.map((night, i) => (
-            <NightBlock key={night.nightDate} night={night} index={i} />
+            <NightBlock
+              key={night.nightDate}
+              night={night}
+              index={i}
+              showVisibility={showVisibility}
+              showWind={showWind}
+            />
           ))}
         </div>
       )}

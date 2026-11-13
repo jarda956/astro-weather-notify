@@ -7,17 +7,80 @@ function cloudColor(cover: number | null): string {
   return `hsl(210, 20%, ${lightness}%)`;
 }
 
+function visibilityColor(vis: number | null): string {
+  if (vis === null) return '#444';
+  // Lower visibility (fog/haze) is worse. Open-Meteo reports meters, capped around 24km for
+  // "unlimited" visibility - 15km is already excellent for astro, so clamp the scale there.
+  const clamped = Math.min(Math.max(vis, 0), 15000);
+  const fogFraction = 1 - clamped / 15000;
+  const lightness = 25 + fogFraction * 55;
+  return `hsl(45, 45%, ${lightness}%)`;
+}
+
+function windColor(speed: number | null): string {
+  if (speed === null) return '#444';
+  // Open-Meteo's default wind speed unit is km/h. Calm (<10 km/h) is ideal for a steady
+  // tripod/mount; above ~30 km/h starts to matter for long exposures.
+  const clamped = Math.min(Math.max(speed, 0), 40);
+  const lightness = 25 + (clamped / 40) * 55;
+  return `hsl(160, 40%, ${lightness}%)`;
+}
+
 function formatHour(iso: string): string {
   // The server sends UTC timestamps; render them in the viewer's own local time.
   return new Date(iso).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 }
 
+function TimelineRow({
+  label,
+  hasData,
+  hourly,
+  model,
+  getValue,
+  getColor,
+  formatTooltip,
+}: {
+  label: string;
+  hasData: boolean;
+  hourly: HourlyPoint[];
+  model: string;
+  getValue: (hourly: HourlyPoint, model: string) => number | null;
+  getColor: (value: number | null) => string;
+  formatTooltip: (hour: string, value: number | null) => string;
+}) {
+  return (
+    <div className="timeline-row">
+      <div className="timeline-label">
+        {label}
+        {!hasData && <span className="muted"> (bez dat)</span>}
+      </div>
+      <div className="timeline-cells">
+        {hourly.map((point) => {
+          const value = getValue(point, model);
+          return (
+            <div
+              key={point.time}
+              className="timeline-cell"
+              style={{ background: getColor(value) }}
+              data-tooltip={formatTooltip(formatHour(point.time), value)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function NightTimeline({
   hourly,
   modelSummaries,
+  showVisibility,
+  showWind,
 }: {
   hourly: HourlyPoint[];
   modelSummaries: ModelSummary[];
+  showVisibility: boolean;
+  showWind: boolean;
 }) {
   if (hourly.length === 0) {
     return <p className="muted">Pro tuto noc nejsou k dispozici hodinova data.</p>;
@@ -25,27 +88,49 @@ export default function NightTimeline({
 
   return (
     <div className="night-timeline">
-      {modelSummaries.map((summary) => (
-        <div key={summary.model} className="timeline-row">
-          <div className="timeline-label">
-            {summary.label}
-            {!summary.hasData && <span className="muted"> (bez dat)</span>}
+      {modelSummaries.map((summary) => {
+        const hasVisibility = hourly.some(
+          (h) => h.models[summary.model]?.visibility !== null && h.models[summary.model] !== undefined
+        );
+        const hasWind = hourly.some(
+          (h) => h.models[summary.model]?.windSpeed !== null && h.models[summary.model] !== undefined
+        );
+        return (
+          <div key={summary.model} className="timeline-group">
+            <TimelineRow
+              label={`${summary.label} - oblacnost`}
+              hasData={summary.hasData}
+              hourly={hourly}
+              model={summary.model}
+              getValue={(h, m) => h.models[m]?.cloudCover ?? null}
+              getColor={cloudColor}
+              formatTooltip={(hour, v) => `${hour} - oblacnost ${v ?? '?'}%`}
+            />
+            {showVisibility && (
+              <TimelineRow
+                label={`${summary.label} - viditelnost`}
+                hasData={hasVisibility}
+                hourly={hourly}
+                model={summary.model}
+                getValue={(h, m) => h.models[m]?.visibility ?? null}
+                getColor={visibilityColor}
+                formatTooltip={(hour, v) => `${hour} - viditelnost ${v ?? '?'} m`}
+              />
+            )}
+            {showWind && (
+              <TimelineRow
+                label={`${summary.label} - vitr`}
+                hasData={hasWind}
+                hourly={hourly}
+                model={summary.model}
+                getValue={(h, m) => h.models[m]?.windSpeed ?? null}
+                getColor={windColor}
+                formatTooltip={(hour, v) => `${hour} - vitr ${v ?? '?'} km/h`}
+              />
+            )}
           </div>
-          <div className="timeline-cells">
-            {hourly.map((point) => {
-              const cover = point.models[summary.model]?.cloudCover ?? null;
-              return (
-                <div
-                  key={point.time}
-                  className="timeline-cell"
-                  style={{ background: cloudColor(cover) }}
-                  data-tooltip={`${formatHour(point.time)} - oblacnost ${cover ?? '?'}%`}
-                />
-              );
-            })}
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <div className="timeline-row timeline-axis">
         <div className="timeline-label" />
         <div className="timeline-cells">

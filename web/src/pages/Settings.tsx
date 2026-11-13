@@ -2,6 +2,35 @@ import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
 import { Location, MODEL_OPTIONS, PublicUser } from '../types';
 import MapPicker from '../components/MapPicker';
+import { useDisplayPrefs } from '../displayPrefs';
+
+function DisplaySection() {
+  const { showVisibility, showWind, setShowVisibility, setShowWind } = useDisplayPrefs();
+
+  return (
+    <section className="settings-section">
+      <h2>Zobrazeni</h2>
+      <div className="model-checkboxes">
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={showVisibility}
+            onChange={(e) => setShowVisibility(e.target.checked)}
+          />
+          Zobrazovat viditelnost (mlhu)
+        </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={showWind}
+            onChange={(e) => setShowWind(e.target.checked)}
+          />
+          Zobrazovat vitr
+        </label>
+      </div>
+    </section>
+  );
+}
 
 function ModelCheckboxes({
   selected,
@@ -468,6 +497,7 @@ export default function Settings({}: { currentUser: PublicUser }) {
         </ul>
       </section>
 
+      <DisplaySection />
       <TelegramSection />
     </div>
   );
